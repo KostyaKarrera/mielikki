@@ -17,6 +17,7 @@ export interface RuleMeta {
   fix: string;
   source: string; // doc URL, 'claude-seo:<path>' or 'squirrelscan:<rule-id>'
   defaultOff?: boolean;
+  defaultOptions?: Record<string, unknown>; // shown by `rules explain`
 }
 
 export interface Finding {
