@@ -147,6 +147,18 @@ describe("crawl/robots-blocks-assets", () => {
   });
 });
 
+describe("crawl/robots-blocks-assets (blanket disallow)", () => {
+  it("silent when the whole site is disallowed (robots-blocks-all reports it)", async () => {
+    expect(
+      await ids(robotsBlocksAssets, {
+        "index.html": doc('<link rel="stylesheet" href="/css/app.css">'),
+        "css/app.css": "a{}",
+        "robots.txt": "User-agent: *\nDisallow: /",
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("crawl/robots-no-sitemap", () => {
   it("fires when robots lacks Sitemap line", async () => {
     expect(

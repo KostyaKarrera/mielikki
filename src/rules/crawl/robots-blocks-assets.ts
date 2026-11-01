@@ -23,6 +23,8 @@ export const rule: SiteRule = {
   checkSite(ctx) {
     const { site } = ctx;
     if (site.robots === undefined) return;
+    // robots-blocks-all already reports a blanket Disallow.
+    if (site.robots.disallowsAll("Googlebot")) return;
     const used = new Map<string, string>(); // asset key -> first page using it
     for (const page of site.pages) {
       const keys: string[] = [];
