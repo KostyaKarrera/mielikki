@@ -1,3 +1,7 @@
+import type { Config } from "../config/schema.js";
+import type { RobotsInfo } from "../parse/robots.js";
+import type { SitemapInfo } from "../parse/sitemap.js";
+
 export interface Link {
   href: string;
   key?: string;
@@ -58,4 +62,25 @@ export interface Page {
   mailto: string[];
   formControls: { tag: string; type?: string; labelled: boolean }[];
   buttons: { named: boolean }[];
+}
+
+export interface Asset {
+  key: string;
+  bytes: number;
+  ext: string; // lowercase, without the dot ('jpg')
+}
+
+export interface Site {
+  input: { kind: "dir" | "url"; root: string };
+  config: Config;
+  site?: string; // base URL
+  pages: Page[]; // sorted by key; without 404
+  notFound?: Page;
+  robots?: RobotsInfo;
+  sitemaps: SitemapInfo[];
+  assets: Map<string, Asset>; // all non-HTML files, key = '/img/a.jpg' (decoded)
+  byKey: Map<string, Page>;
+  inlinks: Map<string, string[]>; // key -> page keys linking from content (not inChrome)
+  inlinksAll: Map<string, string[]>; // including inChrome
+  depth: Map<string, number>; // BFS from '/' over all internal links
 }

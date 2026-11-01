@@ -1,0 +1,105 @@
+import { describe, expect, it } from "vitest";
+import { isIndexable, isRobotsAllowed } from "../../src/model/indexable.js";
+import type { Page } from "../../src/model/types.js";
+import { siteFrom } from "../helpers.js";
+
+describe("loadDir", () => {
+  it("graph depth and inlinks", async () => {
+    const site = await siteFrom({
+      "index.html":
+        '<nav><a href="/c/">c</a></nav><main><a href="/a/">a</a></main>',
+      "a/index.html": '<main><a href="/b/">b</a></main>',
+      "b/index.html": "<main>b</main>",
+      "c/index.html": "<main>c</main>",
+    });
+    expect(site.depth.get("/b/")).toBe(2);
+    expect(site.inlinks.get("/b/")).toEqual(["/a/"]);
+    expect(site.inlinks.get("/c/")).toBeUndefined();
+    expect(site.inlinksAll.get("/c/")).toEqual(["/"]);
+    expect(site.pages.map((p) => p.key)).toEqual(["/", "/a/", "/b/", "/c/"]);
+  });
+
+  it("404 separated", async () => {
+    const site = await siteFrom({
+      "index.html": "<p>x</p>",
+      "404.html": "<p>nf</p>",
+    });
+    expect(site.notFound?.key).toBe("/404/");
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+  });
+
+  it("collects assets, resolves link and image keys, detects site from canonical", async () => {
+    const site = await siteFrom({
+      "index.html":
+        '<link rel="canonical" href="https://x.fi/"><a href="https://x.fi/a">a</a><a href="https://o.fi/">o</a><img src="/img/a.jpg">',
+      "a.html": "<p>a</p>",
+      "img/a.jpg": Buffer.from([1, 2, 3]),
+    });
+    expect(site.site).toBe("https://x.fi");
+    const home = site.byKey.get("/");
+    expect(home?.links.map((l) => [l.internal, l.key])).toEqual([
+      [true, "/a/"],
+      [false, undefined],
+    ]);
+    expect(home?.images[0]?.key).toBe("/img/a.jpg");
+    expect(site.assets.get("/img/a.jpg")).toEqual({
+      key: "/img/a.jpg",
+      bytes: 3,
+      ext: "jpg",
+    });
+    expect(site.byKey.has("/img/a.jpg")).toBe(false);
+  });
+
+  it("config.site wins over canonical", async () => {
+    const site = await siteFrom(
+      { "index.html": '<link rel="canonical" href="https://x.fi/">' },
+      { site: "https://y.fi" },
+    );
+    expect(site.site).toBe("https://y.fi");
+  });
+});
+
+describe("isIndexable", () => {
+  const noindex = '<meta name="robots" content="noindex"><p>x</p>';
+  it("prelaunch indexable", async () => {
+    const files = { "index.html": noindex };
+    const pre = await siteFrom(files, { prelaunch: true });
+    expect(isIndexable(pre, pre.pages[0] as Page)).toBe(true);
+    const live = await siteFrom(files);
+    expect(isIndexable(live, live.pages[0] as Page)).toBe(false);
+  });
+  it("respects robots.txt unless prelaunch", async () => {
+    const files = {
+      "index.html": "<p>x</p>",
+      "robots.txt": "User-agent: *\nDisallow: /",
+    };
+    const live = await siteFrom(files);
+    expect(isRobotsAllowed(live, "/")).toBe(false);
+    expect(isIndexable(live, live.pages[0] as Page)).toBe(false);
+    const pre = await siteFrom(files, { prelaunch: true });
+    expect(isIndexable(pre, pre.pages[0] as Page)).toBe(true);
+  });
+  it("excludes by glob and non-self canonical", async () => {
+    const site = await siteFrom(
+      {
+        "index.html": "<p>x</p>",
+        "thanks/index.html": "<p>t</p>",
+        "a/index.html": '<link rel="canonical" href="https://x.fi/other/">',
+        "b/index.html": '<link rel="canonical" href="https://x.fi/b">',
+      },
+      {
+        site: "https://x.fi",
+        exclude: { noindexExpected: ["/thanks"], ignore: [] },
+      },
+    );
+    const idx = Object.fromEntries(
+      site.pages.map((p) => [p.key, isIndexable(site, p)]),
+    );
+    expect(idx).toEqual({
+      "/": true,
+      "/a/": false,
+      "/b/": true,
+      "/thanks/": false,
+    });
+  });
+});
