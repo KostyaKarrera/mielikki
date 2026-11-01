@@ -76,13 +76,9 @@ describe("core/title-length", () => {
     fires(titleLength, page(`<title>${"a".repeat(61)}</title>`)));
   it("silent in range", () =>
     silent(titleLength, page(`<title>${T30}</title>`)));
-  it("counts code points, not UTF-16 units", () => {
-    // 30 chars of ä (each 1 code point) and 30 astral emoji (60 UTF-16 units)
-    return Promise.all([
-      silent(titleLength, page(`<title>${"ä".repeat(30)}</title>`)),
-      silent(titleLength, page(`<title>${"😀".repeat(30)}</title>`)),
-    ]);
-  });
+  it("counts code points, not UTF-16 units", () =>
+    // 31 emoji = 31 code points (in range) but 62 UTF-16 units (> max 60)
+    silent(titleLength, page(`<title>${"😀".repeat(31)}</title>`)));
   it("honours min/max options", () =>
     silent(titleLength, page("<title>Short</title>"), {
       rules: { options: { "core/title-length": { min: 3, max: 10 } } },
@@ -123,6 +119,17 @@ describe("core/description-length", () => {
   it("fires when long", () => fires(descriptionLength, d("a".repeat(161))));
   it("silent in range", () => silent(descriptionLength, d(D130)));
   it("silent without description", () => silent(descriptionLength, page()));
+  it("counts code points, not UTF-16 units", () =>
+    // 130 emoji = 130 code points (in range) but 260 UTF-16 units (> max 160)
+    silent(descriptionLength, d("😀".repeat(130))));
+  it("honours min/max options", async () => {
+    const cfg = (o: object) => ({
+      rules: { options: { "core/description-length": o } },
+    });
+    await fires(descriptionLength, d(D130), cfg({ max: 100 }));
+    await fires(descriptionLength, d(D130), cfg({ min: 200, max: 300 }));
+    await silent(descriptionLength, d("short"), cfg({ min: 1, max: 10 }));
+  });
 });
 
 describe("core/description-duplicate", () => {
@@ -214,6 +221,24 @@ describe("core/lang-mismatch", () => {
     }));
   it("silent without lang attribute", () =>
     silent(langMismatch, page("", "<h1>x</h1>", ""), { language: "fi" }));
+});
+
+describe("core/lang-mismatch (other)", () => {
+  it("silent when the check language is 'other'", () =>
+    silent(langMismatch, page("", "<h1>x</h1>", ' lang="en"')));
+});
+
+describe("core/canonical-invalid (no site)", () => {
+  it("does not check host when site.site is undefined", () =>
+    silent(
+      canonicalInvalid,
+      page('<link rel="canonical" href="https://other.fi/">'),
+    ));
+});
+
+describe("core/heading-skip (first heading)", () => {
+  it("does not flag a first heading at H3", () =>
+    silent(headingSkip, page("", "<h3>a</h3><h4>b</h4>")));
 });
 
 describe("core/charset-missing", () => {
