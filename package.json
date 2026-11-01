@@ -1,0 +1,39 @@
+{
+  "name": "mielikki",
+  "version": "0.1.0",
+  "description": "Local, offline SEO audit CLI",
+  "license": "MIT",
+  "author": "KostyaKarrera",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KostyaKarrera/mielikki.git"
+  },
+  "type": "module",
+  "bin": {
+    "mielikki": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "vendor",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4",
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  }
+}
