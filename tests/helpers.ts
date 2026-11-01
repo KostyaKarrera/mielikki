@@ -5,6 +5,8 @@ import { type Config, parseConfig } from "../src/config/schema.js";
 import { loadDir } from "../src/load/dir.js";
 import type { Page, Site } from "../src/model/types.js";
 import { parsePage } from "../src/parse/page.js";
+import { runRules } from "../src/rules/engine.js";
+import type { Finding, Profile, Rule } from "../src/rules/types.js";
 
 export function pageFrom(html: string, key = "/"): Page {
   return parsePage(html, key);
@@ -26,4 +28,12 @@ export async function siteFrom(
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+}
+
+export async function runRule(
+  rule: Rule,
+  site: Site,
+  profile: Profile = "dev",
+): Promise<Finding[]> {
+  return runRules(site, [rule], site.config, profile);
 }
