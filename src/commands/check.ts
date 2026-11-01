@@ -30,7 +30,7 @@ export class UsageError extends Error {}
 const SUPPORTED = ["fi", "sv", "en"] as const;
 
 /** Most frequent primary <html lang> subtag among pages, if fi|sv|en. */
-function detectLanguage(pages: Page[]): Config["language"] {
+export function detectLanguage(pages: Page[]): Config["language"] {
   const counts = new Map<string, number>();
   for (const p of pages) {
     const base = p.lang?.toLowerCase().split(/[-_]/)[0];

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command, CommanderError, Option } from "commander";
 import { runCheck, UsageError } from "./commands/check.js";
+import { runInit } from "./commands/init.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { VERSION } from "./version.js";
@@ -82,6 +83,50 @@ export function buildProgram(): Command {
     .exitOverride()
     .action((id: string) => {
       process.stdout.write(explainRule(id));
+    });
+
+  program
+    .command("init")
+    .description("Create mielikki.config.yaml, autodetecting from a build")
+    .argument("[dir]", "build directory to inspect", "dist")
+    .option("--site <url>", "production site URL")
+    .addOption(
+      new Option("--language <lang>", "content language").choices([
+        "fi",
+        "sv",
+        "en",
+      ]),
+    )
+    .addOption(
+      new Option("--business-type <type>", "business type").choices([
+        "brick-and-mortar",
+        "service-area",
+        "hybrid",
+      ]),
+    )
+    .option("--schema-type <type>", "schema.org business type")
+    .option("--force", "overwrite an existing config")
+    .exitOverride()
+    .action(async (dir: string, o) => {
+      process.exitCode = await runInit(
+        dir,
+        {
+          site: o.site,
+          language: o.language,
+          businessType: o.businessType,
+          schemaType: o.schemaType,
+          force: o.force === true,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
     });
 
   return program;
