@@ -4,6 +4,7 @@ import { crawlRules } from "./crawl/index.js";
 import { i18nRules } from "./i18n/index.js";
 import { imagesRules } from "./images/index.js";
 import { linksRules } from "./links/index.js";
+import { localRules } from "./local/index.js";
 import { mobileRules } from "./mobile/index.js";
 import { schemaRules } from "./schema/index.js";
 import { socialRules } from "./social/index.js";
@@ -16,6 +17,7 @@ export const allRules: Rule[] = [
   ...i18nRules,
   ...imagesRules,
   ...linksRules,
+  ...localRules,
   ...mobileRules,
   ...schemaRules,
   ...socialRules,
