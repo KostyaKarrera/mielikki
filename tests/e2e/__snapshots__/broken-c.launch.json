@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 1,
+  "tool": {
+    "name": "mielikki",
+    "version": "0.1.0"
+  },
+  "input": {
+    "kind": "dir",
+    "root": "dist"
+  },
+  "profile": "launch",
+  "language": "fi",
+  "summary": {
+    "pages": 7,
+    "error": 7,
+    "warning": 1,
+    "info": 10
+  },
+  "findings": [
+    {
+      "ruleId": "crawl/robots-blocks-page",
+      "severity": "error",
+      "message": "/alueet/ is blocked for Googlebot by robots.txt",
+      "fix": "Remove the matching Disallow rule, or mark the page noindex on purpose.",
+      "url": "/alueet/"
+    },
+    {
+      "ruleId": "crawl/sitemap-foreign-host",
+      "severity": "error",
+      "message": "https://muu-sivusto.example/ in sitemap is not on sahko.example",
+      "fix": "Generate the sitemap with the production domain, not localhost or staging."
+    },
+    {
+      "ruleId": "schema/business-missing",
+      "severity": "error",
+      "message": "Home page has no JSON-LD node of type Electrician",
+      "fix": "Add JSON-LD of the configured business schemaType (name, address, telephone) to the home page.",
+      "url": "/",
+      "details": {
+        "schemaType": "Electrician"
+      }
+    },
+    {
+      "ruleId": "schema/nap-mismatch",
+      "severity": "error",
+      "message": "name \"Toinen Sähkö Oy\" differs from configured \"Example Sähkö Oy\"",
+      "fix": "Make name and telephone in the JSON-LD identical to the business data in the config.",
+      "url": "/yhteystiedot/",
+      "details": {
+        "field": "name",
+        "found": "Toinen Sähkö Oy",
+        "expected": "Example Sähkö Oy"
+      }
+    },
+    {
+      "ruleId": "schema/nap-mismatch",
+      "severity": "error",
+      "message": "telephone \"+358 41 555 0199\" differs from configured \"+358 41 555 0142\"",
+      "fix": "Make name and telephone in the JSON-LD identical to the business data in the config.",
+      "url": "/yhteystiedot/",
+      "details": {
+        "field": "telephone",
+        "found": "+358 41 555 0199",
+        "expected": "+358 41 555 0142"
+      }
+    },
+    {
+      "ruleId": "targets/missing-target",
+      "severity": "error",
+      "message": "Indexable page / has no target query",
+      "fix": "Add a target (primary query) for this page under targets.pages in the config.",
+      "url": "/"
+    },
+    {
+      "ruleId": "targets/not-indexable",
+      "severity": "error",
+      "message": "Target page /alueet/ cannot be indexed: disallowed in robots.txt",
+      "fix": "Remove noindex, the robots.txt Disallow or the foreign canonical from the target page.",
+      "url": "/alueet/",
+      "details": {
+        "reasons": ["disallowed in robots.txt"]
+      }
+    },
+    {
+      "ruleId": "crawl/sitemap-bad-entry",
+      "severity": "warning",
+      "message": "Sitemap URL https://sahko.example/alueet/ is noindex, blocked, excluded or canonical to another URL",
+      "fix": "Remove the URL from the sitemap, or make the page indexable and canonical to itself.",
+      "url": "/alueet/"
+    },
+    {
+      "ruleId": "ai/crawler-access",
+      "severity": "info",
+      "message": "AI crawlers blocked at /: training [none]; search/citation [none]",
+      "fix": "Allow AI search bots (OAI-SearchBot, Claude-SearchBot, PerplexityBot) in robots.txt if you want to be cited; blocking training crawlers is optional.",
+      "details": {
+        "allowed": [
+          "GPTBot",
+          "ClaudeBot",
+          "Google-Extended",
+          "Applebot-Extended",
+          "Bytespider",
+          "CCBot",
+          "OAI-SearchBot",
+          "Claude-SearchBot",
+          "PerplexityBot",
+          "ChatGPT-User",
+          "Claude-User"
+        ],
+        "blocked": [],
+        "explicit": [],
+        "training": [
+          "GPTBot",
+          "ClaudeBot",
+          "Google-Extended",
+          "Applebot-Extended",
+          "Bytespider",
+          "CCBot"
+        ],
+        "search": [
+          "OAI-SearchBot",
+          "Claude-SearchBot",
+          "PerplexityBot",
+          "ChatGPT-User",
+          "Claude-User"
+        ]
+      }
+    },
+    {
+      "ruleId": "content/word-count",
+      "severity": "info",
+      "message": "/ has 90 words (min 400)",
+      "fix": "Add useful, specific content for visitors; target pages need more depth.",
+      "url": "/",
+      "details": {
+        "wordCount": 90,
+        "min": 400
+      }
+    },
+    {
+      "ruleId": "content/word-count",
+      "severity": "info",
+      "message": "/palvelut/ has 62 words (min 400)",
+      "fix": "Add useful, specific content for visitors; target pages need more depth.",
+      "url": "/palvelut/",
+      "details": {
+        "wordCount": 62,
+        "min": 400
+      }
+    },
+    {
+      "ruleId": "content/word-count",
+      "severity": "info",
+      "message": "/palvelut/sahkoasennukset/ has 79 words (min 400)",
+      "fix": "Add useful, specific content for visitors; target pages need more depth.",
+      "url": "/palvelut/sahkoasennukset/",
+      "details": {
+        "wordCount": 79,
+        "min": 400
+      }
+    },
+    {
+      "ruleId": "content/word-count",
+      "severity": "info",
+      "message": "/tietosuojaseloste/ has 30 words (min 250)",
+      "fix": "Add useful, specific content for visitors; target pages need more depth.",
+      "url": "/tietosuojaseloste/",
+      "details": {
+        "wordCount": 30,
+        "min": 250
+      }
+    },
+    {
+      "ruleId": "content/word-count",
+      "severity": "info",
+      "message": "/yhteystiedot/ has 61 words (min 250)",
+      "fix": "Add useful, specific content for visitors; target pages need more depth.",
+      "url": "/yhteystiedot/",
+      "details": {
+        "wordCount": 61,
+        "min": 250
+      }
+    },
+    {
+      "ruleId": "links/dead-end",
+      "severity": "info",
+      "message": "/tietosuojaseloste/ has no internal links in its content",
+      "fix": "Add internal links in the content to related pages.",
+      "url": "/tietosuojaseloste/"
+    },
+    {
+      "ruleId": "links/dead-end",
+      "severity": "info",
+      "message": "/yhteystiedot/ has no internal links in its content",
+      "fix": "Add internal links in the content to related pages.",
+      "url": "/yhteystiedot/"
+    },
+    {
+      "ruleId": "targets/missing-target",
+      "severity": "info",
+      "message": "Indexable page /tietosuojaseloste/ has no target query",
+      "fix": "Add a target (primary query) for this page under targets.pages in the config.",
+      "url": "/tietosuojaseloste/"
+    },
+    {
+      "ruleId": "targets/missing-target",
+      "severity": "info",
+      "message": "Indexable page /yhteystiedot/ has no target query",
+      "fix": "Add a target (primary query) for this page under targets.pages in the config.",
+      "url": "/yhteystiedot/"
+    }
+  ]
+}

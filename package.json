@@ -25,7 +25,8 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "biome check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "docs:rules": "node dist/cli.js rules --format md > docs/rules.md"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",

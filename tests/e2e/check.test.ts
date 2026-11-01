@@ -27,13 +27,55 @@ describe("check / rules", () => {
       path.join(cwd, "dist", "index.html"),
       '<html lang="fi-FI"><head><title>x</title></head><body>hi</body></html>',
     );
-    const r = run(["check", "dist", "--format", "json"], cwd);
-    expect(r.status).toBe(1); // crawl rules report missing robots.txt and sitemap (errors)
+    const r = run(
+      [
+        "check",
+        "dist",
+        "--format",
+        "json",
+        "--rules",
+        "core/h1-missing,crawl/robots-missing",
+      ],
+      cwd,
+    );
+    expect(r.status).toBe(1); // missing H1 and robots.txt are errors
     const j = JSON.parse(r.stdout);
-    expect(j.schemaVersion).toBe(1);
-    expect(j.language).toBe("fi");
-    expect(j.input.root).toBe("dist");
-    expect(j.summary.pages).toBe(1);
+    expect(j).toMatchInlineSnapshot(`
+      {
+        "findings": [
+          {
+            "fix": "Add one H1 that describes the page.",
+            "message": "/ has no H1",
+            "ruleId": "core/h1-missing",
+            "severity": "error",
+            "url": "/",
+          },
+          {
+            "fix": "Add a /robots.txt that allows crawling and lists the sitemap.",
+            "message": "No /robots.txt found",
+            "ruleId": "crawl/robots-missing",
+            "severity": "error",
+          },
+        ],
+        "input": {
+          "kind": "dir",
+          "root": "dist",
+        },
+        "language": "fi",
+        "profile": "dev",
+        "schemaVersion": 1,
+        "summary": {
+          "error": 2,
+          "info": 0,
+          "pages": 1,
+          "warning": 0,
+        },
+        "tool": {
+          "name": "mielikki",
+          "version": "0.1.0",
+        },
+      }
+    `);
   });
 
   it("bad config → exit 2, stderr has field path", () => {

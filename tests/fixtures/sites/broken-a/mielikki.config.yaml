@@ -1,0 +1,30 @@
+site: https://sahko.example
+language: fi
+region: FI
+input:
+  dir: dist
+  trailingSlash: always
+business:
+  type: service-area
+  schemaType: Electrician
+  name: Example Sähkö Oy
+  phone: "+358 41 555 0142"
+  email: info@sahko.example
+  areaServed: [Loviisa, Porvoo, Helsinki, Uusimaa]
+  hasReviews: false
+exclude:
+  noindexExpected: [/kiitos/, /404/]
+placeholders: [MALLITEKSTI, lorem ipsum]
+targets:
+  required: [/, /palvelut/*, /alueet/*]
+  pages:
+    - url: /
+      primary: sähköasentaja loviisa
+    - url: /palvelut/
+      primary: sähköpalvelut loviisa
+    - url: /palvelut/sahkoasennukset/
+      primary: sähköasennukset loviisa
+      secondary: [sähköasentaja, sähkömies porvoo]
+      forms: { helsinki: [helsingissä, helsingin] }
+    - url: /alueet/
+      primary: sähköasentaja itä-uusimaa
