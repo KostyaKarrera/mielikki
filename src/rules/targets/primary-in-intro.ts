@@ -18,13 +18,8 @@ export const rule: SiteRule = {
     for (const { target, key, page } of resolveTargets(ctx)) {
       if (!page) continue;
       const text = page.firstParagraph;
-      if (text === undefined || text.trim() === "") {
-        ctx.report({
-          url: key,
-          message: `First paragraph is missing on ${key}; primary query "${target.primary}" is not covered`,
-        });
-        continue;
-      }
+      // A missing element is not this rule's concern (core/description-missing, content/word-count).
+      if (text === undefined || text.trim() === "") continue;
       if (phraseIn(target.primary, text, ctx.lang, target.forms) === "none")
         ctx.report({
           url: key,

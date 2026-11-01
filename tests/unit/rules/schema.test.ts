@@ -91,6 +91,18 @@ describe("schema/validation", () => {
 });
 
 describe("schema/business-missing", () => {
+  it("is expected before launch: info in dev, error in launch", async () => {
+    const site = await siteFrom(
+      { "index.html": doc() },
+      { ...business(), prelaunch: true },
+    );
+    expect((await runRule(businessMissing, site, "dev"))[0]?.severity).toBe(
+      "info",
+    );
+    expect((await runRule(businessMissing, site, "launch"))[0]?.severity).toBe(
+      "error",
+    );
+  });
   it("fires when home has no node of the type, ignores config-less", async () => {
     const files = { "index.html": doc(ld({ "@type": "WebSite", name: "x" })) };
     expect(await run(businessMissing, files, business())).toHaveLength(1);

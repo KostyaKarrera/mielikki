@@ -26,14 +26,15 @@ export const rule: SiteRule = {
       if (keys) keys.push(page.key);
       else groups.set(text, [page.key]);
     }
+    // site.pages is sorted, so each group's keys are sorted too.
     for (const keys of [...groups.values()].sort((a, b) =>
-      a[0] < b[0] ? -1 : 1,
+      (a[0] ?? "") < (b[0] ?? "") ? -1 : 1,
     ))
       if (keys.length >= 2)
-        for (const key of keys)
-          ctx.report({
-            url: key,
-            message: `Title is shared with ${keys.filter((k) => k !== key).join(", ")}`,
-          });
+        ctx.report({
+          url: keys[0],
+          message: `Title is shared by ${keys.length} pages: ${keys.join(", ")}`,
+          details: { pages: keys },
+        });
   },
 };

@@ -19,15 +19,14 @@ export const rule: SiteRule = {
     for (const { target, key, page } of resolveTargets(ctx)) {
       if (!page) continue;
       const h1 = page.headings.find((h) => h.level === 1)?.text;
-      const level = phraseIn(target.primary, h1 ?? "", ctx.lang, target.forms);
+      // A missing H1 is reported by core/h1-missing.
+      if (h1 === undefined || h1 === "") continue;
+      const level = phraseIn(target.primary, h1, ctx.lang, target.forms);
       if (level === "full") continue;
       ctx.report({
         url: key,
         severity: level === "none" ? "error" : "warning",
-        message:
-          h1 === undefined
-            ? `Page has no H1; primary query "${target.primary}" is not covered`
-            : `H1 "${h1}" ${level === "none" ? "does not contain" : "only partly contains"} the primary query "${target.primary}"`,
+        message: `H1 "${h1}" ${level === "none" ? "does not contain" : "only partly contains"} the primary query "${target.primary}"`,
       });
     }
   },

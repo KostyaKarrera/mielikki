@@ -78,6 +78,22 @@ describe("check / rules", () => {
     `);
   });
 
+  it("prelaunch business site without schema: dev exit 0, launch exit 1", () => {
+    const cwd = tmp();
+    mkdirSync(path.join(cwd, "dist"));
+    writeFileSync(
+      path.join(cwd, "dist", "index.html"),
+      '<html lang="fi"><head><title>x</title></head><body><h1>x</h1></body></html>',
+    );
+    writeFileSync(
+      path.join(cwd, "mielikki.config.yaml"),
+      "prelaunch: true\nbusiness:\n  type: service-area\n  schemaType: Electrician\n  name: Testi Oy\n",
+    );
+    const args = ["check", "--rules", "schema/business-missing"];
+    expect(run(args, cwd).status).toBe(0);
+    expect(run([...args, "--profile", "launch"], cwd).status).toBe(1);
+  });
+
   it("bad config → exit 2, stderr has field path", () => {
     const cwd = tmp();
     mkdirSync(path.join(cwd, "dist"));

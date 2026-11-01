@@ -1,5 +1,6 @@
 import { isIndexable } from "../../model/indexable.js";
 import { resolveHref } from "../../model/url.js";
+import { isTargetPage } from "../targets/_helpers.js";
 import type { PageRule } from "../types.js";
 
 export const rule: PageRule = {
@@ -18,6 +19,7 @@ export const rule: PageRule = {
   checkPage(page, ctx) {
     const { site } = ctx;
     if (page.canonical === undefined || page.canonical.trim() === "") return;
+    if (isTargetPage(ctx.config, page.key)) return; // targets/not-indexable reports it
     const target = resolveHref(page.canonical, page.key, site.site);
     if (!target.internal || target.key === undefined || target.key === page.key)
       return;

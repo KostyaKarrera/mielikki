@@ -92,13 +92,20 @@ describe("core/title-duplicate", () => {
     "index.html": page(`<title>${a}</title>`),
     "b/index.html": page(`<title>${b}</title>${extra}`),
   });
-  it("fires per page, naming the others", async () => {
+  it("fires once per group on the smallest key, listing the pages", async () => {
     const out = await runRule(
       titleDuplicate,
-      await siteFrom(files("Hello  World", " hello world")),
+      await siteFrom({
+        ...files("Hello  World", " hello world"),
+        "c/index.html": page("<title>hello world</title>"),
+        "d/index.html": page("<title>Other</title>"),
+        "e/index.html": page("<title>other</title>"),
+      }),
     );
-    expect(out.map((f) => f.url)).toEqual(["/", "/b/"]);
-    expect(out[0]?.message).toContain("/b/");
+    expect(out.map((f) => f.url)).toEqual(["/", "/d/"]);
+    expect(out[0]?.message).toBe("Title is shared by 3 pages: /, /b/, /c/");
+    expect(out[0]?.details).toEqual({ pages: ["/", "/b/", "/c/"] });
+    expect(out[1]?.details).toEqual({ pages: ["/d/", "/e/"] });
   });
   it("silent when titles differ", async () =>
     expect(await msgs(titleDuplicate, files("A", "B"))).toEqual([]));
@@ -137,12 +144,13 @@ describe("core/description-duplicate", () => {
     "index.html": page(`<meta name="description" content="${a}">`),
     "b/index.html": page(`<meta name="description" content="${b}">`),
   });
-  it("fires per page", async () => {
+  it("fires once per group on the smallest key", async () => {
     const out = await runRule(
       descriptionDuplicate,
       await siteFrom(files("Same  text", "same text")),
     );
-    expect(out.map((f) => f.url)).toEqual(["/", "/b/"]);
+    expect(out.map((f) => f.url)).toEqual(["/"]);
+    expect(out[0]?.details).toEqual({ pages: ["/", "/b/"] });
   });
   it("silent when different", async () =>
     expect(await msgs(descriptionDuplicate, files("a", "b"))).toEqual([]));

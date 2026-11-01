@@ -20,12 +20,18 @@ export const rule: SiteRule = {
     const { required } = ctx.config.targets;
     for (const page of ctx.site.pages) {
       if (targeted.has(page.key) || !isIndexable(ctx.site, page)) continue;
-      const isRequired = required.some((m) => matchPath(m, page.key));
-      ctx.report({
-        url: page.key,
-        severity: isRequired ? "warning" : "info",
-        message: `Indexable page ${page.key} has no target query`,
-      });
+      const message = `Indexable page ${page.key} has no target query`;
+      if (required.length === 0)
+        // No required masks: a warning that never blocks launch (spec §13).
+        ctx.report({ url: page.key, message, nonBlocking: true });
+      else
+        ctx.report({
+          url: page.key,
+          severity: required.some((m) => matchPath(m, page.key))
+            ? "warning"
+            : "info",
+          message,
+        });
     }
   },
 };

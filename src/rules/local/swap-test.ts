@@ -1,11 +1,31 @@
+import type { Config } from "../../config/schema.js";
 import { stemsMatch } from "../../lang/match.js";
-import { matchPath } from "../glob.js";
+import { clusterPairs, percentRange, type SimilarPair } from "../_cluster.js";
+import { matchGlob, matchPath } from "../glob.js";
 import type { SiteRule } from "../types.js";
 
 const SHINGLE = 5;
 const MIN_TOKENS = 40;
 const THRESHOLD = 0.6;
 const defaults = { pages: ["/alueet/*"] };
+
+/**
+ * Predicate for pages that local/swap-test compares (business areaServed set,
+ * page under its `pages` masks, rule not disabled); undefined when it compares
+ * none. content/near-duplicate leaves pairs of such pages to swap-test.
+ */
+export function swapTestScope(
+  config: Config,
+): ((key: string) => boolean) | undefined {
+  if ((config.business?.areaServed ?? []).length === 0) return undefined;
+  if (config.rules.disable.some((m) => matchGlob(m, "local/swap-test")))
+    return undefined;
+  const option = config.rules.options["local/swap-test"]?.pages;
+  const masks = Array.isArray(option)
+    ? option.filter((m): m is string => typeof m === "string")
+    : defaults.pages;
+  return (key) => masks.some((m) => matchPath(m, key));
+}
 
 function jaccard(a: Set<string>, b: Set<string>): number {
   const [small, large] = a.size <= b.size ? [a, b] : [b, a];
@@ -82,18 +102,24 @@ export const rule: SiteRule = {
       items.push({ key: page.key, shingles });
     }
     items.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    const pairs: SimilarPair[] = [];
     for (let i = 0; i < items.length; i++)
       for (let j = i + 1; j < items.length; j++) {
         const a = items[i];
         const b = items[j];
         if (!a || !b) continue;
-        const sim = jaccard(a.shingles, b.shingles);
-        if (sim >= THRESHOLD)
-          ctx.report({
-            url: a.key,
-            message: `${a.key} matches ${b.key} once city names are swapped out (similarity ${Math.round(sim * 100)}%)`,
-            details: { other: b.key, similarity: sim },
-          });
+        const similarity = jaccard(a.shingles, b.shingles);
+        if (similarity >= THRESHOLD)
+          pairs.push({ a: a.key, b: b.key, similarity });
       }
+    for (const c of clusterPairs(pairs))
+      ctx.report({
+        url: c.pages[0],
+        message: `${c.pages.length} area pages match once city names are swapped out (similarity ${percentRange(c)}): ${c.pages.join(", ")}`,
+        details: {
+          pages: c.pages,
+          similarity: { min: c.min, max: c.max },
+        },
+      });
   },
 };

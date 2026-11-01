@@ -117,6 +117,16 @@ The full generated list is in [docs/rules.md](docs/rules.md) (regenerate with `n
 | a11y     | button names, form labels                                                                                 |
 | ai       | AI crawler access in robots.txt (informational)                                                           |
 
+### Rule overlap
+
+One problem is reported once, by the most specific rule; rules that depend on it stay silent:
+
+- `targets/primary-in-title`, `-h1`, `-intro`, `-description` say nothing when the element itself is missing (`core/title-missing`, `core/h1-missing`, `core/description-missing` report that).
+- Indexing problems of configured target pages (noindex, robots.txt Disallow, canonical elsewhere) come from `targets/not-indexable`; `crawl/noindex`, `crawl/robots-blocks-page` and `crawl/canonical-target` skip those pages. A site-wide `Disallow: /` is reported only by `crawl/robots-blocks-all`.
+- `crawl/robots-no-sitemap` is silent when there is no sitemap at all (`crawl/sitemap-missing`).
+- `content/near-duplicate` leaves pairs of area pages to `local/swap-test` (when `business.areaServed` is set). Both rules, and `core/title-duplicate` / `core/description-duplicate`, report one finding per group of similar pages (on the first page, with all pages in `details.pages`), not one per pair.
+- `targets/missing-target` without `targets.required` is a warning that never blocks launch.
+
 ## Acknowledgements
 
 Many rules and thresholds are derived from claude-seo by AgriciDaniel (MIT) and squirrelscan (MIT), plus Google Search Central documentation. See [NOTICE](NOTICE) for details, including bundled schema.org data (CC BY-SA 3.0).

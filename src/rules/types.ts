@@ -34,6 +34,8 @@ export interface Report {
   url?: string;
   severity?: Severity;
   details?: Record<string, unknown>;
+  /** This finding is never raised to error by the launch profile. */
+  nonBlocking?: boolean;
 }
 
 export interface RuleContext {

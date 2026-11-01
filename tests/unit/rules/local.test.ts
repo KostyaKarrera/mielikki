@@ -125,6 +125,30 @@ describe("local/swap-test", () => {
     expect(f[0]?.url).toBe("/alueet/loviisa/");
     expect(f[0]?.message).toContain("/alueet/porvoo/");
   });
+  it("reports one finding per group of matching area pages", async () => {
+    const f = await run(
+      swapTest,
+      {
+        ...pair,
+        "alueet/helsinki/index.html": body("Helsingissä"),
+        "alueet/kotka/index.html": body("Kotkassa", "k"),
+        "alueet/hamina/index.html": body("Haminassa", "k"),
+      },
+      business({
+        areaServed: ["Loviisa", "Porvoo", "Helsinki", "Kotka", "Hamina"],
+      }),
+    );
+    expect(f.map((x) => x.url)).toEqual([
+      "/alueet/hamina/",
+      "/alueet/helsinki/",
+    ]);
+    expect(f[1]?.details?.pages).toEqual([
+      "/alueet/helsinki/",
+      "/alueet/loviisa/",
+      "/alueet/porvoo/",
+    ]);
+    expect(f[1]?.message).toContain("3 area pages");
+  });
   it("needs the swap: unrelated areaServed gives no finding", async () => {
     expect(
       await run(swapTest, pair, business({ areaServed: ["Kotka"] })),

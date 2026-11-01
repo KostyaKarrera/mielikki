@@ -1,4 +1,5 @@
 import { matchPath } from "../glob.js";
+import { isTargetPage } from "../targets/_helpers.js";
 import type { PageRule } from "../types.js";
 
 export const rule: PageRule = {
@@ -17,6 +18,7 @@ export const rule: PageRule = {
   },
   checkPage(page, ctx) {
     if (!page.robotsMeta.includes("noindex")) return;
+    if (isTargetPage(ctx.config, page.key)) return; // targets/not-indexable reports it
     if (ctx.config.exclude.noindexExpected.some((p) => matchPath(p, page.key)))
       return;
     ctx.report({ message: `${page.key} has noindex but is not expected to` });

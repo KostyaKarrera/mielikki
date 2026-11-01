@@ -22,7 +22,11 @@ export const rule: SiteRule = {
       if (!page) continue;
       const reasons: string[] = [];
       if (page.robotsMeta.includes("noindex")) reasons.push("noindex meta");
-      if (!isRobotsAllowed(ctx.site, key))
+      // A site-wide Disallow is reported once by crawl/robots-blocks-all.
+      if (
+        !isRobotsAllowed(ctx.site, key) &&
+        !ctx.site.robots?.disallowsAll("Googlebot")
+      )
         reasons.push("disallowed in robots.txt");
       const canonical = page.canonical?.trim();
       if (canonical) {

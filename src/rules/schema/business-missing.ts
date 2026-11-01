@@ -10,6 +10,8 @@ export const rule: SiteRule = {
     scope: "site",
     inputs: ["dir", "url"],
     launchBlocking: true,
+    // The business schema is often added only when the site goes live.
+    prelaunchExpected: true,
     fix: "Add JSON-LD of the configured business schemaType (name, address, telephone) to the home page.",
     source:
       "https://developers.google.com/search/docs/appearance/structured-data/local-business",

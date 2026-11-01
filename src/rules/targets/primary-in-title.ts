@@ -17,9 +17,11 @@ export const rule: SiteRule = {
   checkSite(ctx) {
     for (const { target, key, page } of resolveTargets(ctx)) {
       if (!page) continue;
+      // A missing title is reported by core/title-missing.
+      if (page.title === undefined || page.title === "") continue;
       const level = phraseIn(
         target.primary,
-        page.title ?? "",
+        page.title,
         ctx.lang,
         target.forms,
       );
@@ -27,10 +29,7 @@ export const rule: SiteRule = {
       ctx.report({
         url: key,
         severity: level === "none" ? "error" : "warning",
-        message:
-          page.title === undefined
-            ? `Title is missing; primary query "${target.primary}" is not covered`
-            : `Title "${page.title}" ${level === "none" ? "does not contain" : "only partly contains"} the primary query "${target.primary}"`,
+        message: `Title "${page.title}" ${level === "none" ? "does not contain" : "only partly contains"} the primary query "${target.primary}"`,
       });
     }
   },

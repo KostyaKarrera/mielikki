@@ -103,6 +103,19 @@ describe("targets/not-indexable", () => {
     );
     expect(f).toHaveLength(1);
   });
+  it("drops the robots reason when robots.txt blocks the whole site", async () => {
+    const all = { ...svcFiles(), "robots.txt": "User-agent: *\nDisallow: /" };
+    expect(await run(notIndexable, all, t)).toEqual([]);
+    const f = await run(
+      notIndexable,
+      {
+        ...all,
+        ...svcFiles({ head: '<meta name="robots" content="noindex">' }),
+      },
+      t,
+    );
+    expect(f[0]?.details).toEqual({ reasons: ["noindex meta"] });
+  });
   it("fires on foreign canonical", async () => {
     const f = await run(
       notIndexable,
@@ -163,6 +176,15 @@ describe("targets/primary-in-title", () => {
       await run(primaryInTitle, svcFiles(), cfg([target("/ei/", "foo bar")])),
     ).toEqual([]);
   });
+  it("silent when the title is missing (core/title-missing reports it)", async () => {
+    expect(
+      await run(
+        primaryInTitle,
+        svcFiles({ title: undefined }),
+        cfg([target(SVC, "sähköasennukset loviisa")]),
+      ),
+    ).toEqual([]);
+  });
   it("honours forms override for Helsinki", async () => {
     const files = {
       "helsinki/index.html": page({ title: "Sähkömies Helsingissä" }),
@@ -207,10 +229,8 @@ describe("targets/primary-in-h1", () => {
     const part = await run(primaryInH1, svcFiles({ h1: "Sähköasennukset" }), t);
     expect(part.map((x) => x.severity)).toEqual(["warning"]);
   });
-  it("reports a missing H1", async () => {
-    const f = await run(primaryInH1, svcFiles({ h1: undefined }), t);
-    expect(f).toHaveLength(1);
-    expect(f[0]?.message).toContain("no H1");
+  it("silent when the H1 is missing (core/h1-missing reports it)", async () => {
+    expect(await run(primaryInH1, svcFiles({ h1: undefined }), t)).toEqual([]);
   });
 });
 
@@ -219,16 +239,16 @@ describe("targets/primary-in-intro", () => {
   it("silent when intro contains it", async () => {
     expect(await run(primaryInIntro, svcFiles(), t)).toEqual([]);
   });
-  it("warns when absent and when the intro is missing", async () => {
+  it("warns when absent", async () => {
     const f = await run(
       primaryInIntro,
       svcFiles({ body: "<p>Tervetuloa meille kaikki.</p>" }),
       t,
     );
     expect(f.map((x) => x.severity)).toEqual(["warning"]);
-    const m = await run(primaryInIntro, svcFiles({ body: "" }), t);
-    expect(m).toHaveLength(1);
-    expect(m[0]?.message).toContain("missing");
+  });
+  it("silent when the intro is missing", async () => {
+    expect(await run(primaryInIntro, svcFiles({ body: "" }), t)).toEqual([]);
   });
 });
 
@@ -237,15 +257,18 @@ describe("targets/primary-in-description", () => {
   it("silent when description contains it", async () => {
     expect(await run(primaryInDescription, svcFiles(), t)).toEqual([]);
   });
-  it("warns when absent and when missing", async () => {
+  it("warns when absent", async () => {
     const f = await run(
       primaryInDescription,
       svcFiles({ desc: "Hyvää palvelua kaikille." }),
       t,
     );
     expect(f).toHaveLength(1);
-    const m = await run(primaryInDescription, svcFiles({ desc: undefined }), t);
-    expect(m[0]?.message).toContain("missing");
+  });
+  it("silent when the description is missing (core/description-missing reports it)", async () => {
+    expect(
+      await run(primaryInDescription, svcFiles({ desc: undefined }), t),
+    ).toEqual([]);
   });
 });
 
@@ -340,12 +363,21 @@ describe("targets/missing-target", () => {
       "/palvelut/b/": "warning",
     });
   });
-  it("only info when required is empty; error in launch", async () => {
+  it("warning that never blocks launch when required is empty (R15)", async () => {
     const site = await siteFrom(files, cfg([]));
     const dev = await runRules(site, [missingTarget], site.config, "dev");
-    expect(new Set(dev.map((x) => x.severity))).toEqual(new Set(["info"]));
+    expect(dev.map((x) => x.url)).toEqual([
+      "/",
+      "/ohje/",
+      "/palvelut/a/",
+      "/palvelut/b/",
+    ]);
+    expect(new Set(dev.map((x) => x.severity))).toEqual(new Set(["warning"]));
     const launch = await runRules(site, [missingTarget], site.config, "launch");
-    expect(new Set(launch.map((x) => x.severity))).toEqual(new Set(["info"]));
+    expect(launch).toHaveLength(4);
+    expect(new Set(launch.map((x) => x.severity))).toEqual(
+      new Set(["warning"]),
+    );
   });
   it("required pages become errors in launch", async () => {
     const site = await siteFrom(

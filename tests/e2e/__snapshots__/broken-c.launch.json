@@ -13,16 +13,16 @@
   "summary": {
     "pages": 7,
     "error": 7,
-    "warning": 1,
-    "info": 10
+    "warning": 2,
+    "info": 7
   },
   "findings": [
     {
       "ruleId": "crawl/robots-blocks-page",
       "severity": "error",
-      "message": "/alueet/ is blocked for Googlebot by robots.txt",
+      "message": "/yhteystiedot/ is blocked for Googlebot by robots.txt",
       "fix": "Remove the matching Disallow rule, or mark the page noindex on purpose.",
-      "url": "/alueet/"
+      "url": "/yhteystiedot/"
     },
     {
       "ruleId": "crawl/sitemap-foreign-host",
@@ -89,6 +89,13 @@
       "message": "Sitemap URL https://sahko.example/alueet/ is noindex, blocked, excluded or canonical to another URL",
       "fix": "Remove the URL from the sitemap, or make the page indexable and canonical to itself.",
       "url": "/alueet/"
+    },
+    {
+      "ruleId": "crawl/sitemap-bad-entry",
+      "severity": "warning",
+      "message": "Sitemap URL https://sahko.example/yhteystiedot/ is noindex, blocked, excluded or canonical to another URL",
+      "fix": "Remove the URL from the sitemap, or make the page indexable and canonical to itself.",
+      "url": "/yhteystiedot/"
     },
     {
       "ruleId": "ai/crawler-access",
@@ -173,17 +180,6 @@
       }
     },
     {
-      "ruleId": "content/word-count",
-      "severity": "info",
-      "message": "/yhteystiedot/ has 61 words (min 250)",
-      "fix": "Add useful, specific content for visitors; target pages need more depth.",
-      "url": "/yhteystiedot/",
-      "details": {
-        "wordCount": 61,
-        "min": 250
-      }
-    },
-    {
       "ruleId": "links/dead-end",
       "severity": "info",
       "message": "/tietosuojaseloste/ has no internal links in its content",
@@ -191,25 +187,11 @@
       "url": "/tietosuojaseloste/"
     },
     {
-      "ruleId": "links/dead-end",
-      "severity": "info",
-      "message": "/yhteystiedot/ has no internal links in its content",
-      "fix": "Add internal links in the content to related pages.",
-      "url": "/yhteystiedot/"
-    },
-    {
       "ruleId": "targets/missing-target",
       "severity": "info",
       "message": "Indexable page /tietosuojaseloste/ has no target query",
       "fix": "Add a target (primary query) for this page under targets.pages in the config.",
       "url": "/tietosuojaseloste/"
-    },
-    {
-      "ruleId": "targets/missing-target",
-      "severity": "info",
-      "message": "Indexable page /yhteystiedot/ has no target query",
-      "fix": "Add a target (primary query) for this page under targets.pages in the config.",
-      "url": "/yhteystiedot/"
     }
   ]
 }

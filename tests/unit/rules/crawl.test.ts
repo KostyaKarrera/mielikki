@@ -166,8 +166,17 @@ describe("crawl/robots-no-sitemap", () => {
       await ids(robotsNoSitemap, {
         ...twoPages,
         "robots.txt": "User-agent: *\nAllow: /",
+        "sitemap.xml": sitemap(`${H}/`),
       }),
     ).toHaveLength(1);
+  });
+  it("silent when there is no sitemap at all (sitemap-missing reports it)", async () => {
+    expect(
+      await ids(robotsNoSitemap, {
+        ...twoPages,
+        "robots.txt": "User-agent: *\nAllow: /",
+      }),
+    ).toEqual([]);
   });
   it("silent with a Sitemap line or without robots", async () => {
     expect(
@@ -574,5 +583,28 @@ describe("prelaunch", () => {
       ]),
     );
     expect(hit.every((x) => x.severity === "error")).toBe(true);
+  });
+});
+
+describe("crawl rules skip config target pages (targets/not-indexable reports them)", () => {
+  const target = { url: "/a/", primary: "x", secondary: [], forms: {} };
+  const cfg = { site: H, targets: { required: [], pages: [target] } };
+  it("crawl/noindex", async () => {
+    const files = { ...twoPages, "a/index.html": doc(NOINDEX) };
+    expect(await ids(noindex, files, { site: H })).toEqual(["/a/"]);
+    expect(await ids(noindex, files, cfg)).toEqual([]);
+  });
+  it("crawl/robots-blocks-page", async () => {
+    const files = { ...twoPages, "robots.txt": "User-agent: *\nDisallow: /a/" };
+    expect(await ids(robotsBlocksPage, files, { site: H })).toEqual(["/a/"]);
+    expect(await ids(robotsBlocksPage, files, cfg)).toEqual([]);
+  });
+  it("crawl/canonical-target", async () => {
+    const files = {
+      ...twoPages,
+      "a/index.html": doc(`<link rel="canonical" href="${H}/missing/">`),
+    };
+    expect(await ids(canonicalTarget, files, { site: H })).toEqual(["/a/"]);
+    expect(await ids(canonicalTarget, files, cfg)).toEqual([]);
   });
 });

@@ -43,6 +43,31 @@ const rules = (r: Partial<Config["rules"]>) => ({
 });
 
 describe("engine", () => {
+  it("nonBlocking findings are not escalated in launch", async () => {
+    const site = await siteFrom(files);
+    const rule: SiteRule = {
+      meta: { ...base, id: "t/nb", scope: "site", launchBlocking: true },
+      checkSite: (ctx) => {
+        ctx.report({ message: "soft", nonBlocking: true });
+        ctx.report({ message: "hard" });
+      },
+    };
+    const launch = await runRule(rule, site, "launch");
+    expect(launch.map((f) => [f.message, f.severity])).toEqual([
+      ["hard", "error"],
+      ["soft", "warning"],
+    ]);
+    // config override of launchBlocking does not escalate it either
+    const forced = await siteFrom(
+      files,
+      rules({ launchBlocking: { "t/nb": true } }),
+    );
+    expect(
+      (await runRule(rule, forced, "launch")).find((f) => f.message === "soft")
+        ?.severity,
+    ).toBe("warning");
+  });
+
   it("severity override from config", async () => {
     const site = await siteFrom(files, rules({ severity: { "t/a": "error" } }));
     const f = await runRule(siteRule("t/a"), site);

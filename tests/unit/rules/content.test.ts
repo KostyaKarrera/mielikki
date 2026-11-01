@@ -151,6 +151,95 @@ describe("content/near-duplicate", () => {
     expect(f[0]?.url).toBe("/a/");
     expect(f[0]?.message).toContain("/b/");
   });
+  it("reports one finding per connected group", async () => {
+    const other = Array.from({ length: 80 }, (_, i) => `x${i}`).join(" ");
+    const f = await runRule(
+      nearDuplicate,
+      await siteFrom({
+        "c/index.html": doc(`<p>${text}</p>`),
+        "a/index.html": doc(`<p>${text} lisää</p>`),
+        "b/index.html": doc(`<p>${text}</p>`),
+        "x/index.html": doc(`<p>${other}</p>`),
+        "y/index.html": doc(`<p>${other}</p>`),
+      }),
+    );
+    expect(f.map((x) => x.url)).toEqual(["/a/", "/x/"]);
+    expect(f[0]?.details?.pages).toEqual(["/a/", "/b/", "/c/"]);
+    expect(f[0]?.message).toMatch(
+      /^3 pages are near-duplicates \(similarity \d+–100%\): \/a\/, \/b\/, \/c\/$/,
+    );
+    expect(f[1]?.details).toEqual({
+      pages: ["/x/", "/y/"],
+      similarity: { min: 1, max: 1 },
+    });
+  });
+  it("leaves area page pairs to local/swap-test", async () => {
+    const files = {
+      "alueet/a/index.html": doc(`<p>${text}</p>`),
+      "alueet/b/index.html": doc(`<p>${text}</p>`),
+      "c/index.html": doc(`<p>${text}</p>`),
+    };
+    const business = {
+      type: "service-area" as const,
+      schemaType: "Electrician",
+      name: "X",
+      areaServed: ["Loviisa"],
+      hasReviews: false,
+    };
+    // swap-test covers /alueet/a/ + /alueet/b/; /c/ still pairs with both.
+    const covered = await runRule(
+      nearDuplicate,
+      await siteFrom(files, { business }),
+    );
+    expect(covered.map((x) => x.details?.pages)).toEqual([
+      ["/alueet/a/", "/alueet/b/", "/c/"],
+    ]);
+    const onlyArea = {
+      "alueet/a/index.html": files["alueet/a/index.html"],
+      "alueet/b/index.html": files["alueet/b/index.html"],
+    };
+    expect(
+      await runRule(nearDuplicate, await siteFrom(onlyArea, { business })),
+    ).toEqual([]);
+    // without areaServed, or with swap-test disabled, near-duplicate reports them
+    expect(
+      await runRule(
+        nearDuplicate,
+        await siteFrom(onlyArea, { business: { ...business, areaServed: [] } }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      await runRule(
+        nearDuplicate,
+        await siteFrom(onlyArea, {
+          business,
+          rules: {
+            enable: [],
+            disable: ["local/swap-test"],
+            severity: {},
+            launchBlocking: {},
+            options: {},
+          },
+        }),
+      ),
+    ).toHaveLength(1);
+    // custom swap-test masks move the scope
+    expect(
+      await runRule(
+        nearDuplicate,
+        await siteFrom(onlyArea, {
+          business,
+          rules: {
+            enable: [],
+            disable: [],
+            severity: {},
+            launchBlocking: {},
+            options: { "local/swap-test": { pages: ["/kaupungit/*"] } },
+          },
+        }),
+      ),
+    ).toHaveLength(1);
+  });
   it("does not fire on different or short pages", async () => {
     const other = Array.from({ length: 80 }, (_, i) => `x${i}`).join(" ");
     expect(

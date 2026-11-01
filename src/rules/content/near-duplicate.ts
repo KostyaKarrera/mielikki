@@ -1,4 +1,6 @@
 import { isIndexable } from "../../model/indexable.js";
+import { clusterPairs, percentRange, type SimilarPair } from "../_cluster.js";
+import { swapTestScope } from "../local/swap-test.js";
 import type { SiteRule } from "../types.js";
 
 const SHINGLE = 5;
@@ -21,7 +23,7 @@ export const rule: SiteRule = {
     scope: "site",
     inputs: ["dir", "url"],
     launchBlocking: false,
-    fix: "Rewrite one page, merge the two, or point one canonical at the other.",
+    fix: "Rewrite the pages so each is distinct, merge them, or point their canonicals at one of them.",
     source:
       "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls",
   },
@@ -37,18 +39,27 @@ export const rule: SiteRule = {
       items.push({ key: page.key, shingles });
     }
     items.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    // Pairs of area pages are judged by local/swap-test instead.
+    const swap = swapTestScope(ctx.config);
+    const pairs: SimilarPair[] = [];
     for (let i = 0; i < items.length; i++)
       for (let j = i + 1; j < items.length; j++) {
         const a = items[i];
         const b = items[j];
         if (!a || !b) continue;
-        const sim = jaccard(a.shingles, b.shingles);
-        if (sim >= THRESHOLD)
-          ctx.report({
-            url: a.key,
-            message: `${a.key} is a near-duplicate of ${b.key} (similarity ${Math.round(sim * 100)}%)`,
-            details: { other: b.key, similarity: sim },
-          });
+        if (swap?.(a.key) && swap(b.key)) continue;
+        const similarity = jaccard(a.shingles, b.shingles);
+        if (similarity >= THRESHOLD)
+          pairs.push({ a: a.key, b: b.key, similarity });
       }
+    for (const c of clusterPairs(pairs))
+      ctx.report({
+        url: c.pages[0],
+        message: `${c.pages.length} pages are near-duplicates (similarity ${percentRange(c)}): ${c.pages.join(", ")}`,
+        details: {
+          pages: c.pages,
+          similarity: { min: c.min, max: c.max },
+        },
+      });
   },
 };

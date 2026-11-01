@@ -16,6 +16,7 @@ export function resolveSeverity(
   meta: RuleMeta,
   config: Config,
   profile: Profile,
+  nonBlocking = false,
 ): Severity {
   let sev = config.rules.severity[meta.id] ?? base;
   if (profile === "dev" && config.prelaunch && meta.prelaunchExpected) {
@@ -23,6 +24,7 @@ export function resolveSeverity(
   }
   if (
     profile === "launch" &&
+    !nonBlocking &&
     (config.rules.launchBlocking[meta.id] ?? meta.launchBlocking) &&
     sev !== "info"
   ) {
@@ -73,6 +75,7 @@ export async function runRules(
           rule.meta,
           config,
           profile,
+          r.nonBlocking === true,
         ),
         message: r.message,
         fix: rule.meta.fix,

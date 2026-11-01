@@ -1,4 +1,5 @@
 User-agent: *
 Disallow: /alueet/
+Disallow: /yhteystiedot/
 
 Sitemap: https://sahko.example/sitemap.xml
