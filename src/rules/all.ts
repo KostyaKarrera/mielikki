@@ -8,6 +8,7 @@ import { localRules } from "./local/index.js";
 import { mobileRules } from "./mobile/index.js";
 import { schemaRules } from "./schema/index.js";
 import { socialRules } from "./social/index.js";
+import { targetsRules } from "./targets/index.js";
 import type { Rule } from "./types.js";
 
 export const allRules: Rule[] = [
@@ -21,4 +22,5 @@ export const allRules: Rule[] = [
   ...mobileRules,
   ...schemaRules,
   ...socialRules,
+  ...targetsRules,
 ].sort((a, b) => (a.meta.id < b.meta.id ? -1 : a.meta.id > b.meta.id ? 1 : 0));
