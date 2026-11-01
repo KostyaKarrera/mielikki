@@ -15,6 +15,8 @@ npm i -D github:KostyaKarrera/mielikki
 npx mielikki --help
 ```
 
+The compiled `dist/` is not committed: on a git install npm runs the package's `prepare` script (`npm run build`), which compiles it with the package's own dev dependencies. Installing with `--ignore-scripts` skips that step and leaves no CLI.
+
 After the npm release: `npx mielikki ...`. Requires Node.js 22.12 or newer.
 
 ## Quick start
