@@ -2,13 +2,17 @@ import type { PageRule } from "../types.js";
 
 const BUILTIN = ["lorem ipsum", "TODO", "TBD", "PLACEHOLDER"];
 
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 
-function compile(marker: string): RegExp {
-  return new RegExp(
-    `(?<![\\p{L}\\p{N}_])${escapeRegex(marker)}(?![\\p{L}\\p{N}_])`,
-    "iu",
-  );
+function compile(marker: string): RegExp | undefined {
+  try {
+    return new RegExp(
+      `(?<![\\p{L}\\p{N}_])${escapeRegex(marker)}(?![\\p{L}\\p{N}_])`,
+      "iu",
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 export const rule: PageRule = {
@@ -40,6 +44,7 @@ export const rule: PageRule = {
     ];
     for (const marker of markers) {
       const re = compile(marker);
+      if (re === undefined) continue;
       const where = [
         ...new Set(fields.filter(([, v]) => re.test(v)).map(([f]) => f)),
       ];

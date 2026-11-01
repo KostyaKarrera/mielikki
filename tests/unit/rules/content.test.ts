@@ -8,7 +8,7 @@ import { rule as wordCount } from "../../../src/rules/content/word-count.js";
 import { runRule, siteFrom } from "../../helpers.js";
 
 const doc = (body: string, head = "") =>
-  `<html lang="fi"><head>${head}</head><body><main><h1>Otsikko</h1> ${body}</main></body></html>`;
+  `<html lang="fi"><head>${head}</head><body><main><h1>x</h1>${body}</main></body></html>`;
 const words = (n: number, w = "sana") => Array(n).fill(w).join(" ");
 const msgs = async (
   rule: Parameters<typeof runRule>[0],
@@ -46,6 +46,18 @@ describe("content/placeholder", () => {
     ).toHaveLength(1);
     expect(
       await msgs(placeholder, one(doc("<p>xMALLITEKSTIx axb</p>")), cfg),
+    ).toEqual([]);
+  });
+  it("handles hyphenated and metacharacter markers without crashing", async () => {
+    expect(
+      await msgs(placeholder, one(doc("<p>see foo-bar here</p>")), {
+        placeholders: ["foo-bar"],
+      }),
+    ).toHaveLength(1);
+    expect(
+      await msgs(placeholder, one(doc("<p>ok</p>")), {
+        placeholders: [`.*+?^$\{}()|[]\\/-`],
+      }),
     ).toEqual([]);
   });
   it("does not fire on clean pages or on 'todos'", async () => {
