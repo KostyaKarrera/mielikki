@@ -78,7 +78,9 @@
       "fix": "Remove noindex, the robots.txt Disallow or the foreign canonical from the target page.",
       "url": "/alueet/",
       "details": {
-        "reasons": ["disallowed in robots.txt"]
+        "reasons": [
+          "disallowed in robots.txt"
+        ]
       }
     },
     {
