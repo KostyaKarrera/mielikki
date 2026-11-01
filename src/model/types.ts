@@ -7,6 +7,8 @@ export interface Link {
   key?: string;
   internal: boolean;
   text: string;
+  /** aria-label, or alt text of a nested <img>; undefined when neither is non-empty. */
+  label?: string;
   rel: string[];
   inChrome: boolean;
 }

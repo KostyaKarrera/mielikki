@@ -63,6 +63,18 @@ describe("parsePage", () => {
     expect(by("https://x.com/")?.key).toBeUndefined();
   });
 
+  it("link label from aria-label or nested img alt", () => {
+    const p = pageFrom(
+      '<body><a href="/a/" aria-label=" Etusivu "></a><a href="/b/"><img src="/l.png" alt="Logo"></a><a href="/c/"><img src="/l.png" alt=""></a><a href="/d/">Teksti</a></body>',
+    );
+    expect(p.links.map((l) => l.label)).toEqual([
+      "Etusivu",
+      "Logo",
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("images", () => {
     const p = pageFrom(HEAD);
     expect(p.images).toEqual([

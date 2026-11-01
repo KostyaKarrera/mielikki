@@ -132,10 +132,20 @@ export function parsePage(html: string, key: string, file?: string): Page {
     if (lower.startsWith("tel:")) tel.push(href.slice(4).replace(/\s+/g, ""));
     else if (lower.startsWith("mailto:"))
       mailto.push(href.slice(7).replace(/\s+/g, ""));
+    const label =
+      collapse($el.attr("aria-label") ?? "") ||
+      collapse(
+        $el
+          .find("img[alt]")
+          .toArray()
+          .map((img) => $(img).attr("alt") ?? "")
+          .join(" "),
+      );
     links.push({
       href,
       internal: !SCHEME.test(href) && !href.startsWith("//"),
       text: collapse($el.text()),
+      label: label === "" ? undefined : label,
       rel: ($el.attr("rel") ?? "").toLowerCase().split(/\s+/).filter(Boolean),
       inChrome: $el.closest(CHROME).length > 0,
     });
