@@ -1,4 +1,4 @@
-import { readdir, writeFile } from "node:fs/promises";
+import { access, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import { type Config, parseConfig } from "../config/schema.js";
@@ -34,7 +34,6 @@ export interface Detected {
 }
 
 const KNOWN_SUBTYPES = new Set([
-  "Organization",
   "LocalBusiness",
   "Electrician",
   "Plumber",
@@ -52,7 +51,22 @@ const KNOWN_SUBTYPES = new Set([
   "LegalService",
   "Dentist",
 ]);
-const BUSINESS_SUFFIX = /(Business|Contractor|Service|Store|Shop)$/;
+const BUSINESS_SUFFIX = /(Business|Contractor)$/;
+const NOT_BUSINESS = new Set([
+  "Service",
+  "WebService",
+  "GovernmentService",
+  "FinancialService",
+]);
+
+function businessType(node: Record<string, unknown>): string | undefined {
+  return typesOf(node).find(
+    (t) =>
+      t !== "Organization" &&
+      !NOT_BUSINESS.has(t) &&
+      (KNOWN_SUBTYPES.has(t) || BUSINESS_SUFFIX.test(t)),
+  );
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -82,12 +96,15 @@ export function detect(site: Site): Detected {
   else out.noindexExpected = noindexed.map((p) => p.key);
 
   const home = site.byKey.get("/");
-  if (home !== undefined)
-    for (const node of nodesOf(home)) {
-      const type = typesOf(node).find(
-        (t) => KNOWN_SUBTYPES.has(t) || BUSINESS_SUFFIX.test(t),
-      );
-      if (type === undefined) continue;
+  if (home !== undefined) {
+    const nodes = nodesOf(home);
+    let node = nodes.find((n) => businessType(n) !== undefined);
+    let type = node === undefined ? undefined : businessType(node);
+    if (node === undefined) {
+      node = nodes.find((n) => typesOf(n).includes("Organization"));
+      type = "Organization";
+    }
+    if (node !== undefined && type !== undefined) {
       const address = node.address;
       out.business = {
         type:
@@ -99,8 +116,8 @@ export function detect(site: Site): Detected {
         phone: text(node.telephone),
         areaServed: areaNames(node.areaServed),
       };
-      break;
     }
+  }
   return out;
 }
 
@@ -194,6 +211,17 @@ export async function runInit(
 ): Promise<number> {
   const dirName = dirArg ?? "dist";
   const target = path.join(io.cwd, CONFIG_FILE);
+  if (
+    !opts.force &&
+    (await access(target).then(
+      () => true,
+      () => false,
+    ))
+  )
+    throw new UsageError(
+      `${CONFIG_FILE} already exists (use --force to overwrite)`,
+    );
+
   const dir = path.resolve(io.cwd, dirName);
   let detected: Detected = { prelaunch: false, noindexExpected: [] };
   const found = await readdir(dir).then(

@@ -32,7 +32,70 @@ function build(pages: Record<string, string>): string {
 const read = (cwd: string) =>
   readFileSync(path.join(cwd, "mielikki.config.yaml"), "utf8");
 
+const ld = (o: object) =>
+  `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", ...o })}</script>`;
+
 describe("init", () => {
+  it("prefers a business node over a preceding Service node", () => {
+    const cwd = build({
+      "index.html": page(
+        ld({ "@type": "Service", name: "Wrong" }) +
+          ld({ "@type": "Electrician", name: "Right" }),
+      ),
+    });
+    run(["init"], cwd);
+    const raw = parse(read(cwd));
+    expect(raw.business.schemaType).toBe("Electrician");
+    expect(raw.business.name).toBe("Right");
+  });
+
+  it("falls back to Organization when no business node exists", () => {
+    const cwd = build({
+      "index.html": page(ld({ "@type": "Organization", name: "Org Oy" })),
+    });
+    run(["init"], cwd);
+    expect(parse(read(cwd)).business.schemaType).toBe("Organization");
+  });
+
+  it("writes no business block for a lone Service node", () => {
+    const cwd = build({
+      "index.html": page(ld({ "@type": "Service", name: "Svc" })),
+    });
+    run(["init"], cwd);
+    expect(parse(read(cwd)).business).toBeUndefined();
+  });
+
+  it("node with streetAddress is brick-and-mortar", () => {
+    const cwd = build({
+      "index.html": page(
+        ld({
+          "@type": "Plumber",
+          name: "P",
+          address: { "@type": "PostalAddress", streetAddress: "Katu 1" },
+        }),
+      ),
+    });
+    run(["init"], cwd);
+    expect(parse(read(cwd)).business.type).toBe("brick-and-mortar");
+  });
+
+  it("--schema-type alone writes a round-tripping business block", () => {
+    const cwd = build({ "index.html": page("") });
+    run(["init", "--schema-type", "Electrician"], cwd);
+    const raw = parse(read(cwd));
+    expect(() => parseConfig(raw)).not.toThrow();
+    expect(raw.business.schemaType).toBe("Electrician");
+    expect(raw.business.name).toBe("");
+  });
+
+  it("existing config fails before any directory warning", () => {
+    const cwd = tmp();
+    writeFileSync(path.join(cwd, "mielikki.config.yaml"), "old: 1\n");
+    const r = run(["init", "nodir"], cwd);
+    expect(r.status).toBe(2);
+    expect(r.stderr).not.toContain("not found");
+  });
+
   it("generates valid config with detected language and site", () => {
     const cwd = build({
       "index.html": page('<link rel="canonical" href="https://testi.fi/">'),
