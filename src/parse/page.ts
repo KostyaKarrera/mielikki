@@ -82,6 +82,9 @@ function parseForms($: CheerioAPI) {
   return { formControls, buttons };
 }
 
+const BLOCK_TAGS =
+  "p, div, section, article, li, ul, ol, h1, h2, h3, h4, h5, h6, br, tr, td, th, blockquote, pre, table, figure, figcaption, dt, dd, header, footer, nav, aside, main, form, label, button, option, hr";
+
 export function parsePage(html: string, key: string, file?: string): Page {
   const $ = load(html.replace(/^﻿/, ""));
 
@@ -103,7 +106,14 @@ export function parsePage(html: string, key: string, file?: string): Page {
   });
 
   const root = contentRoot($);
-  const mainText = collapse(root.text());
+  const textRoot = root.clone();
+  textRoot
+    .find(BLOCK_TAGS)
+    .add(textRoot.filter(BLOCK_TAGS))
+    .each((_, el) => {
+      $(el).before(" ").after(" ");
+    });
+  const mainText = collapse(textRoot.text());
   let firstParagraph: string | undefined;
   root.find("p").each((_, el) => {
     const t = collapse($(el).text());

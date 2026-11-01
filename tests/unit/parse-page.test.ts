@@ -159,3 +159,20 @@ describe("parsePage", () => {
     expect(e.title).toBeUndefined();
   });
 });
+
+describe("mainText block separation", () => {
+  it("separates blocks but keeps inline elements joined", () => {
+    const p = pageFrom(
+      "<html><body><main><h1>x</h1><p>Foo</p><p>Lovii<b>sa</b></p></main></body></html>",
+    );
+    expect(p.mainText).toBe("x Foo Loviisa");
+    expect(p.headings[0]?.text).toBe("x");
+    expect(p.firstParagraph).toBe("Foo");
+  });
+  it("counts words across blocks", () => {
+    expect(
+      pageFrom("<html><body><main><h1>a</h1><p>b c</p></main></body></html>")
+        .wordCount,
+    ).toBe(3);
+  });
+});
