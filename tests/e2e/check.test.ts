@@ -28,7 +28,7 @@ describe("check / rules", () => {
       '<html lang="fi-FI"><head><title>x</title></head><body>hi</body></html>',
     );
     const r = run(["check", "dist", "--format", "json"], cwd);
-    expect(r.status).toBe(0);
+    expect(r.status).toBe(1); // crawl rules report missing robots.txt and sitemap (errors)
     const j = JSON.parse(r.stdout);
     expect(j.schemaVersion).toBe(1);
     expect(j.language).toBe("fi");
