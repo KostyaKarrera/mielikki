@@ -15,7 +15,6 @@ export function pageKey(pathname: string): string {
   return p;
 }
 
-const BASE = "http://mielikki.invalid";
 const HTML_EXT = /\.html?$/i;
 const FILE_EXT = /\/[^/]*\.[^/.]+$/;
 
@@ -51,7 +50,10 @@ export function resolveHref(
   if (url.protocol !== "http:" && url.protocol !== "https:")
     return { internal: false };
   const absolute = /^([a-z][a-z0-9+.-]*:)?\/\//i.test(h);
-  if (absolute && url.host.toLowerCase() !== (siteHost ?? BASE))
+  if (
+    absolute &&
+    (siteHost === undefined || url.host.toLowerCase() !== siteHost)
+  )
     return { internal: false, external: h };
   return { internal: true, key: keyFromPath(url.pathname) };
 }

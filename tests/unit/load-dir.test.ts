@@ -103,3 +103,28 @@ describe("isIndexable", () => {
     });
   });
 });
+
+describe("loadDir robustness", () => {
+  it("malformed percent escapes in sitemap loc and robots Sitemap do not throw", async () => {
+    const site = await siteFrom({
+      "index.html": "<p>x</p>",
+      "robots.txt":
+        "Sitemap: https://x.fi/s%zz.xml\nSitemap: https://x.fi/idx.xml\n",
+      "idx.xml": `<sitemapindex><sitemap><loc>https://x.fi/t%zz.xml</loc></sitemap></sitemapindex>`,
+    });
+    expect(site.sitemaps.map((s) => [s.file, s.ok])).toEqual([
+      ["/s%zz.xml", false],
+      ["/idx.xml", true],
+      ["/t%zz.xml", false],
+    ]);
+  });
+
+  it("files with literal percent sequences in their names key correctly", async () => {
+    const site = await siteFrom({
+      "a%20b.html": "<p>x</p>",
+      "img/a%20b.jpg": Buffer.from([1]),
+    });
+    expect(site.pages.map((p) => p.key)).toEqual(["/a%20b/"]);
+    expect(site.assets.has("/img/a%20b.jpg")).toBe(true);
+  });
+});

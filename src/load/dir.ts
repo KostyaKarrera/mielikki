@@ -14,6 +14,11 @@ const DEFAULT_SITEMAPS = [
   "/sitemap_index.xml",
 ];
 
+/** URL path of a file: encoded so that literal '%', '?' and '#' in names survive pageKey. */
+function fileUrlPath(rel: string): string {
+  return encodeURI(`/${rel}`).replace(/[?#]/g, (c) => encodeURIComponent(c));
+}
+
 async function walk(root: string, rel = ""): Promise<string[]> {
   const entries = await readdir(path.join(root, rel), { withFileTypes: true });
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -48,7 +53,13 @@ async function readText(
   root: string,
   urlPath: string,
 ): Promise<string | undefined> {
-  const abs = path.join(root, decodeURIComponent(urlPath));
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPath);
+  } catch {
+    return undefined;
+  }
+  const abs = path.join(root, decoded);
   if (!abs.startsWith(root + path.sep)) return undefined;
   try {
     return await readFile(abs, "utf8");
@@ -111,7 +122,7 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
   for (const rel of files) {
     if (HTML.test(rel)) {
       const html = await readFile(path.join(root, rel), "utf8");
-      const page = parsePage(html, pageKey(`/${rel}`), rel);
+      const page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
       if (rel === "404.html") notFound = page;
       else pages.push(page);
     } else {
