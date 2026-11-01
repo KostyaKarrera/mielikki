@@ -34,6 +34,8 @@
     "vitest": "5.0.5"
   },
   "dependencies": {
+    "@adobe/structured-data-validator": "1.7.0",
+    "@marbec/web-auto-extractor": "2.2.1",
     "cheerio": "1.2.0",
     "commander": "15.0.0",
     "fast-xml-parser": "5.11.2",
