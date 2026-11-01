@@ -37,6 +37,33 @@ describe("good fixture", () => {
   });
 });
 
+describe("astro-like fixtures (R16)", () => {
+  it("astro-like (production URLs, site configured) is green in launch", () => {
+    const r = report("astro-like", "launch");
+    expect(r.summary.pages).toBe(7);
+    expect(r.summary.error).toBe(0);
+    expect(r.summary.warning).toBe(0);
+    expect(
+      run(["check", "--profile", "launch"], site("astro-like")).status,
+    ).toBe(0);
+  });
+
+  it("astro-localhost (localhost URLs, no site) is red in launch", () => {
+    const r = report("astro-localhost", "launch");
+    const errors = new Set(
+      r.findings.filter((f) => f.severity === "error").map((f) => f.ruleId),
+    );
+    expect([...errors].sort()).toEqual([
+      "core/canonical-invalid",
+      "crawl/site-url-not-configured",
+      "crawl/sitemap-foreign-host",
+    ]);
+    expect(
+      run(["check", "--profile", "launch"], site("astro-localhost")).status,
+    ).toBe(1);
+  });
+});
+
 describe("broken fixtures", () => {
   const dirs = readdirSync(SITES).filter((d) => d.startsWith("broken-"));
   const fired = new Set<string>();

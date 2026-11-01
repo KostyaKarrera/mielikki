@@ -1,3 +1,4 @@
+import { isLocalHost } from "../../model/host.js";
 import type { SiteRule } from "../types.js";
 import { siteHost, sitemapEntries } from "./_helpers.js";
 
@@ -17,18 +18,27 @@ export const rule: SiteRule = {
   checkSite(ctx) {
     const { site } = ctx;
     const host = siteHost(site);
-    if (host === undefined) return;
-    const foreign = new Map<string, string>(); // url -> where it was found
-    for (const e of sitemapEntries(site))
-      if (e.host !== host && !foreign.has(e.url)) foreign.set(e.url, "sitemap");
-    for (const url of site.robots?.sitemaps ?? [])
-      if (URL.canParse(url) && new URL(url).host.toLowerCase() !== host)
-        foreign.set(url, "robots.txt");
-    for (const [url, where] of [...foreign].sort(([x], [y]) =>
-      x < y ? -1 : 1,
+    // Local/private hosts are never valid, even when they are the detected origin.
+    const why = (h: string): string | undefined =>
+      isLocalHost(h)
+        ? `is on a local/private host (${h})`
+        : host !== undefined && h !== host
+          ? `is not on ${host}`
+          : undefined;
+    const found = new Map<string, string>(); // url -> message
+    for (const e of sitemapEntries(site)) {
+      const w = why(e.host);
+      if (w !== undefined && !found.has(e.url))
+        found.set(e.url, `${e.url} in sitemap ${w}`);
+    }
+    for (const url of site.robots?.sitemaps ?? []) {
+      if (!URL.canParse(url)) continue;
+      const w = why(new URL(url).host.toLowerCase());
+      if (w !== undefined) found.set(url, `${url} in robots.txt ${w}`);
+    }
+    for (const [, message] of [...found].sort(([x], [y]) =>
+      x < y ? -1 : x > y ? 1 : 0,
     ))
-      ctx.report({
-        message: `${url} in ${where} is not on ${host}`,
-      });
+      ctx.report({ message });
   },
 };

@@ -34,6 +34,7 @@
 | crawl/robots-blocks-page | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/robots/intro |
 | crawl/robots-missing | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/robots/intro |
 | crawl/robots-no-sitemap | warning | no | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap |
+| crawl/site-url-not-configured | warning | yes | crawl/site | mielikki:original |
 | crawl/sitemap-bad-entry | warning | no | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap |
 | crawl/sitemap-foreign-host | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap |
 | crawl/sitemap-invalid | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap |

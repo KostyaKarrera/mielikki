@@ -9,6 +9,7 @@ import { rule as robotsBlocksAssets } from "./robots-blocks-assets.js";
 import { rule as robotsBlocksPage } from "./robots-blocks-page.js";
 import { rule as robotsMissing } from "./robots-missing.js";
 import { rule as robotsNoSitemap } from "./robots-no-sitemap.js";
+import { rule as siteUrlNotConfigured } from "./site-url-not-configured.js";
 import { rule as sitemapBadEntry } from "./sitemap-bad-entry.js";
 import { rule as sitemapForeignHost } from "./sitemap-foreign-host.js";
 import { rule as sitemapInvalid } from "./sitemap-invalid.js";
@@ -27,6 +28,7 @@ export const crawlRules: Rule[] = [
   robotsBlocksPage,
   robotsMissing,
   robotsNoSitemap,
+  siteUrlNotConfigured,
   sitemapBadEntry,
   sitemapForeignHost,
   sitemapInvalid,

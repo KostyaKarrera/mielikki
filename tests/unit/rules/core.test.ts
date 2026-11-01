@@ -202,6 +202,23 @@ describe("core/canonical-invalid", () => {
     silent(canonicalInvalid, page(), { site: H }));
   it("is launch blocking", () =>
     expect(canonicalInvalid.meta.launchBlocking).toBe(true));
+  it("fires on a local/private host even without site", async () => {
+    for (const h of [
+      "http://localhost:4321",
+      "http://127.0.0.1",
+      "http://[::1]:3000",
+      "http://192.168.0.2",
+      "https://stg.local",
+    ]) {
+      const out = await msgs(canonicalInvalid, one(c(`${h}/`)));
+      expect(out, h).toHaveLength(1);
+      expect(out[0]).toContain("local/private host");
+    }
+  });
+  it("fires on a local host equal to the configured site", () =>
+    fires(canonicalInvalid, c("http://localhost:4321/"), {
+      site: "http://localhost:4321",
+    }));
 });
 
 describe("core/lang-missing", () => {

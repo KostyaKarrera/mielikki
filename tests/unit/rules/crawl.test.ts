@@ -10,6 +10,7 @@ import { rule as robotsBlocksAssets } from "../../../src/rules/crawl/robots-bloc
 import { rule as robotsBlocksPage } from "../../../src/rules/crawl/robots-blocks-page.js";
 import { rule as robotsMissing } from "../../../src/rules/crawl/robots-missing.js";
 import { rule as robotsNoSitemap } from "../../../src/rules/crawl/robots-no-sitemap.js";
+import { rule as siteUrlNotConfigured } from "../../../src/rules/crawl/site-url-not-configured.js";
 import { rule as sitemapBadEntry } from "../../../src/rules/crawl/sitemap-bad-entry.js";
 import { rule as sitemapForeignHost } from "../../../src/rules/crawl/sitemap-foreign-host.js";
 import { rule as sitemapInvalid } from "../../../src/rules/crawl/sitemap-invalid.js";
@@ -39,11 +40,11 @@ const ids = async (
   );
 
 describe("crawl rules registry", () => {
-  it("registers all 16 crawl rules, sorted", () => {
+  it("registers all 17 crawl rules, sorted", () => {
     const c = allRules
       .map((r) => r.meta.id)
       .filter((i) => i.startsWith("crawl/"));
-    expect(c).toHaveLength(16);
+    expect(c).toHaveLength(17);
     expect(c).toEqual([...c].sort());
   });
 });
@@ -252,9 +253,64 @@ describe("crawl/sitemap-foreign-host", () => {
     expect(
       await ids(sitemapForeignHost, {
         ...twoPages,
-        "sitemap.xml": sitemap("http://localhost/"),
+        "sitemap.xml": sitemap("https://other.fi/"),
       }),
     ).toEqual([]);
+  });
+  it("fires on local/private hosts even when they are the detected origin", async () => {
+    const L = "http://localhost:4321";
+    const local = {
+      "index.html": doc(`<link rel="canonical" href="${L}/">`, a("/a/")),
+      "a/index.html": doc(`<link rel="canonical" href="${L}/a/">`),
+      "sitemap.xml": sitemap(`${L}/`, `${L}/a/`),
+      "robots.txt": `Sitemap: ${L}/sitemap.xml`,
+    };
+    const site = await siteFrom(local);
+    expect(site.site).toBe(L);
+    const out = await runRule(sitemapForeignHost, site);
+    expect(out.map((f) => f.message)).toEqual([
+      `${L}/ in sitemap is on a local/private host (localhost:4321)`,
+      `${L}/a/ in sitemap is on a local/private host (localhost:4321)`,
+      `${L}/sitemap.xml in robots.txt is on a local/private host (localhost:4321)`,
+    ]);
+    for (const h of [
+      "http://127.0.0.1:8080",
+      "http://[::1]",
+      "http://10.1.2.3",
+      "http://172.20.0.5",
+      "http://192.168.1.10",
+      "http://169.254.1.1",
+      "http://myhost.local",
+      "http://app.localhost",
+    ])
+      expect(
+        await ids(
+          sitemapForeignHost,
+          { ...twoPages, "sitemap.xml": sitemap(`${h}/`) },
+          { site: h },
+        ),
+        h,
+      ).toHaveLength(1);
+  });
+});
+
+describe("crawl/site-url-not-configured", () => {
+  it("fires when config.site is undefined", async () => {
+    const out = await runRule(siteUrlNotConfigured, await siteFrom(twoPages));
+    expect(out).toHaveLength(1);
+    expect(out[0]?.severity).toBe("warning");
+    expect(out[0]?.message).toContain("set `site:`");
+  });
+  it("is an error in launch", async () => {
+    const out = await runRule(
+      siteUrlNotConfigured,
+      await siteFrom(twoPages),
+      "launch",
+    );
+    expect(out[0]?.severity).toBe("error");
+  });
+  it("silent when site is configured", async () => {
+    expect(await ids(siteUrlNotConfigured, twoPages, { site: H })).toEqual([]);
   });
 });
 
@@ -442,6 +498,37 @@ describe("crawl/thin-html", () => {
     expect(
       await ids(thinHtml, {
         "index.html": doc("", `<p>${words}</p><script></script>`),
+      }),
+    ).toEqual([]);
+  });
+  it("ignores JSON-LD, JSON and module scripts", async () => {
+    const head = [
+      '<script type="application/ld+json">{"@type":"Thing"}</script>',
+      "<script type='application/json'>{}</script>",
+      '<script type="module" src="/_astro/hoisted.js"></script>',
+      "<script type=MODULE>1</script>",
+    ].join("");
+    expect(
+      await ids(thinHtml, { "index.html": doc(head, "<p>hi</p>") }),
+    ).toEqual([]);
+    expect(
+      await ids(thinHtml, {
+        "index.html": doc(`${head}<script type="text/javascript">1</script>`),
+      }),
+    ).toEqual(["/"]);
+  });
+  it("judges indexable pages only", async () => {
+    const files = {
+      "index.html": doc("", a("/kiitos/")),
+      "kiitos/index.html": doc(
+        "",
+        '<p>Kiitos</p><script src="/a.js"></script>',
+      ),
+    };
+    expect(await ids(thinHtml, files)).toEqual(["/kiitos/"]);
+    expect(
+      await ids(thinHtml, files, {
+        exclude: { noindexExpected: ["/kiitos/"] },
       }),
     ).toEqual([]);
   });

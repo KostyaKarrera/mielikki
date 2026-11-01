@@ -68,7 +68,7 @@ Target queries are matched by word stem (Snowball stemmers for fi, sv, en) plus 
 ## Profiles
 
 - `dev` (default): everyday checking. Rules report their own severity. With `prelaunch: true`, findings caused by the site being intentionally closed (noindex, `Disallow: /`) are downgraded to info.
-- `launch`: pre-release gate. Rules marked launch-blocking (closed to indexing, missing or broken robots/sitemap, bad canonicals, broken internal links, placeholders and test contacts, invalid JSON-LD, fake ratings, missing title/H1, uncovered target pages and similar) are raised to `error`. Override per rule with `rules.launchBlocking`.
+- `launch`: pre-release gate. Rules marked launch-blocking (closed to indexing, `site:` not configured, localhost/private URLs in canonicals or sitemaps, missing or broken robots/sitemap, bad canonicals, broken internal links, placeholders and test contacts, invalid JSON-LD, fake ratings, missing title/H1, uncovered target pages and similar) are raised to `error`. Override per rule with `rules.launchBlocking`.
 
 ```sh
 mielikki check dist --profile launch --fail-on warning

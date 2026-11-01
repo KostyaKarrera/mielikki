@@ -1,3 +1,4 @@
+import { isLocalHost } from "../../model/host.js";
 import type { PageRule } from "../types.js";
 
 export const rule: PageRule = {
@@ -26,16 +27,23 @@ export const rule: PageRule = {
       ctx.report({ message: `Canonical "${href}" is not an absolute URL` });
       return;
     }
-    if (ctx.site.site === undefined) return;
-    try {
-      const host = new URL(href).host;
-      const siteHost = new URL(ctx.site.site).host;
-      if (host !== siteHost)
-        ctx.report({
-          message: `Canonical host ${host} differs from site host ${siteHost}`,
-        });
-    } catch {
+    if (!URL.canParse(href)) {
       ctx.report({ message: `Canonical "${href}" is not a valid URL` });
+      return;
     }
+    const host = new URL(href).host;
+    // Local/private hosts are never valid, even when they are the detected origin.
+    if (isLocalHost(host)) {
+      ctx.report({
+        message: `Canonical ${href} is on a local/private host (${host})`,
+      });
+      return;
+    }
+    if (ctx.site.site === undefined || !URL.canParse(ctx.site.site)) return;
+    const siteHost = new URL(ctx.site.site).host;
+    if (host !== siteHost)
+      ctx.report({
+        message: `Canonical host ${host} differs from site host ${siteHost}`,
+      });
   },
 };

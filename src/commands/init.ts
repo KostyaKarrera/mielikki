@@ -3,6 +3,7 @@ import path from "node:path";
 import { parse } from "yaml";
 import { type Config, parseConfig } from "../config/schema.js";
 import { loadDir } from "../load/dir.js";
+import { isLocalUrl } from "../model/host.js";
 import type { Site } from "../model/types.js";
 import { nodesOf, typesOf } from "../rules/schema/_helpers.js";
 import { detectLanguage, UsageError } from "./check.js";
@@ -22,6 +23,8 @@ export interface InitOptions {
 export interface Detected {
   language?: "fi" | "sv" | "en";
   site?: string;
+  /** Detected origin that is local/private (never written as `site:`). */
+  localSite?: string;
   prelaunch: boolean;
   noindexExpected: string[];
   business?: {
@@ -86,10 +89,13 @@ function areaNames(v: unknown): string[] {
 export function detect(site: Site): Detected {
   const out: Detected = {
     language: detectLanguage(site.pages),
-    site: site.site,
     prelaunch: false,
     noindexExpected: [],
   };
+  if (site.site !== undefined) {
+    if (isLocalUrl(site.site)) out.localSite = site.site;
+    else out.site = site.site;
+  }
   const noindexed = site.pages.filter((p) => p.robotsMeta.includes("noindex"));
   if (site.pages.length > 0 && noindexed.length === site.pages.length)
     out.prelaunch = true;
@@ -135,7 +141,16 @@ export function renderConfig(
     "# Mielikki configuration. Docs: `mielikki rules` lists all rules.",
     "",
     "# Canonical origin of the production site (absolute URL).",
-    siteUrl ? `site: ${q(siteUrl)}` : '# site: "https://example.fi"',
+    ...(siteUrl
+      ? [`site: ${q(siteUrl)}`]
+      : [
+          ...(d.localSite
+            ? [
+                `# Detected ${d.localSite} is a local address; set the production URL.`,
+              ]
+            : []),
+          '# site: "https://example.fi"',
+        ]),
     "",
     "# Content language: fi, sv or en.",
     language ? `language: ${language}` : "# language: fi",

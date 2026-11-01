@@ -112,6 +112,21 @@ describe("init", () => {
     expect(read(cwd)).toContain("# ");
   });
 
+  it("never writes a detected local/private origin as site", () => {
+    for (const origin of ["http://localhost:4321", "http://192.168.1.5:8080"]) {
+      const cwd = build({
+        "index.html": page(`<link rel="canonical" href="${origin}/">`),
+      });
+      expect(run(["init"], cwd).status).toBe(0);
+      const text = read(cwd);
+      const raw = parse(text);
+      expect(raw.site, origin).toBeUndefined();
+      expect(text).toContain('# site: "https://example.fi"');
+      expect(text).toContain(`# Detected ${origin} is a local address`);
+      expect(() => parseConfig(raw)).not.toThrow();
+    }
+  });
+
   it("refuses overwrite with exit 2 and --force overwrites", () => {
     const cwd = build({ "index.html": page("") });
     writeFileSync(path.join(cwd, "mielikki.config.yaml"), "old: 1\n");
