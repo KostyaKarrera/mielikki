@@ -1,6 +1,13 @@
 {
   "formatter": { "indentStyle": "space", "indentWidth": 2 },
   "files": {
-    "includes": ["**", "!dist", "!docs", "!node_modules", "!.superpowers"]
+    "includes": [
+      "**",
+      "!dist",
+      "!vendor",
+      "!docs",
+      "!node_modules",
+      "!.superpowers"
+    ]
   }
 }
