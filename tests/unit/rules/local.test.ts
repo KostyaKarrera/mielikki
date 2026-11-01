@@ -60,6 +60,14 @@ describe("local/tel-link", () => {
     );
     expect(f).toHaveLength(1);
   });
+  it("fires when the phone is only in the footer text", async () => {
+    const html = `<html lang="fi"><body><main><h1>x</h1></main><footer>Puh. +358 40 111 2222</footer></body></html>`;
+    expect(await run(telLink, { "index.html": html }, cfg)).toHaveLength(1);
+  });
+  it("is silent when the footer phone has a tel: link", async () => {
+    const html = `<html lang="fi"><body><main><h1>x</h1></main><footer><a href="tel:+358401112222">040 111 2222</a></footer></body></html>`;
+    expect(await run(telLink, { "index.html": html }, cfg)).toEqual([]);
+  });
   it("does not fire with a tel: link, or without business", async () => {
     expect(
       await run(
@@ -102,32 +110,32 @@ describe("local/name-consistency", () => {
 });
 
 describe("local/swap-test", () => {
-  const filler = (n: number) =>
-    Array.from({ length: n }, (_, i) => `sana${i}`).join(" ");
-  const tpl = (city: string) =>
+  // A city word every second token: nearly every 5-gram contains one.
+  const body = (city: string, tag = "w") =>
     doc(
-      `<p>Tarjoamme sähkötöitä ${city} nopeasti ja luotettavasti. ${filler(60)} Soita meille ${city} ja sovi aika.</p>`,
+      `<p>${Array.from({ length: 24 }, (_, i) => `${city} ${tag}${i}`).join(" ")}</p>`,
     );
+  const pair = {
+    "alueet/loviisa/index.html": body("Loviisassa"),
+    "alueet/porvoo/index.html": body("Porvoossa"),
+  };
   it("fires for pages differing only by the city", async () => {
-    const f = await run(
-      swapTest,
-      {
-        "alueet/loviisa/index.html": tpl("Loviisassa"),
-        "alueet/porvoo/index.html": tpl("Porvoossa"),
-      },
-      business(),
-    );
+    const f = await run(swapTest, pair, business());
     expect(f).toHaveLength(1);
     expect(f[0]?.url).toBe("/alueet/loviisa/");
     expect(f[0]?.message).toContain("/alueet/porvoo/");
   });
+  it("needs the swap: unrelated areaServed gives no finding", async () => {
+    expect(
+      await run(swapTest, pair, business({ areaServed: ["Kotka"] })),
+    ).toEqual([]);
+  });
   it("does not fire for genuinely different pages", async () => {
-    const other = Array.from({ length: 70 }, (_, i) => `toinen${i}`).join(" ");
     const f = await run(
       swapTest,
       {
-        "alueet/loviisa/index.html": tpl("Loviisassa"),
-        "alueet/porvoo/index.html": doc(`<p>Porvoossa ${other}</p>`),
+        "alueet/loviisa/index.html": body("Loviisassa", "a"),
+        "alueet/porvoo/index.html": body("Porvoossa", "b"),
       },
       business(),
     );
@@ -137,22 +145,32 @@ describe("local/swap-test", () => {
     const f = await run(
       swapTest,
       {
-        "alueet/loviisa/index.html": tpl("Loviisassa"),
-        "muu/index.html": tpl("Porvoossa"),
+        "alueet/loviisa/index.html": body("Loviisassa"),
+        "muu/index.html": body("Porvoossa"),
       },
       business(),
     );
     expect(f).toEqual([]);
   });
   it("is silent without areaServed", async () => {
-    const f = await run(
-      swapTest,
-      {
-        "alueet/a/index.html": tpl("Loviisassa"),
-        "alueet/b/index.html": tpl("Porvoossa"),
-      },
-      business({ areaServed: [] }),
-    );
-    expect(f).toEqual([]);
+    expect(await run(swapTest, pair, business({ areaServed: [] }))).toEqual([]);
+  });
+  it("matches multi-word areas as a whole, not per token", async () => {
+    const two = {
+      "alueet/a/index.html": body("Etelä Pohjanmaalla"),
+      "alueet/b/index.html": body("Etelä Pohjanmaan"),
+    };
+    // "Etelä Pohjanmaa" is one city: the pair collapses to the same text.
+    expect(
+      await run(swapTest, two, business({ areaServed: ["Etelä Pohjanmaa"] })),
+    ).toHaveLength(1);
+    // "etelä" alone must not count as a city: pages differing in "etelä" stay apart.
+    const iso = {
+      "alueet/a/index.html": body("etelä"),
+      "alueet/b/index.html": body("pieni"),
+    };
+    expect(
+      await run(swapTest, iso, business({ areaServed: ["Etelä Pohjanmaa"] })),
+    ).toEqual([]);
   });
 });

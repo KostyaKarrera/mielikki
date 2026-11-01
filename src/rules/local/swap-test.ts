@@ -32,26 +32,49 @@ export const rule: SiteRule = {
     if (areas.length === 0) return;
     const { pages: masks } = ctx.options(defaults);
     const lang = ctx.lang;
-    const cityStems = areas
-      .flatMap((a) => lang.tokenize(a))
-      .map((t) => lang.stem(t));
+    // Each areaServed entry is a token sequence (stems); longest first.
+    const cityPhrases = areas
+      .map((a) => lang.tokenize(a).map((t) => lang.stem(t)))
+      .filter((p) => p.length > 0)
+      .sort((x, y) => y.length - x.length);
     const explicit = new Set<string>();
     for (const tp of ctx.config.targets.pages)
       for (const [key, forms] of Object.entries(tp.forms)) {
         const ks = lang.stem(key.normalize("NFC").toLowerCase());
-        if (!cityStems.some((c) => stemsMatch(c, ks))) continue;
+        if (
+          !cityPhrases.some((p) => p.length === 1 && stemsMatch(p[0] ?? "", ks))
+        )
+          continue;
         for (const f of forms)
           for (const t of lang.tokenize(f)) explicit.add(t);
       }
-    const isCity = (t: string): boolean =>
-      explicit.has(t) || cityStems.some((c) => stemsMatch(c, lang.stem(t)));
+    const swap = (tokens: string[]): string[] => {
+      const stems = tokens.map((t) => lang.stem(t));
+      const out: string[] = [];
+      for (let i = 0; i < tokens.length; ) {
+        const phrase = cityPhrases.find(
+          (p) =>
+            i + p.length <= tokens.length &&
+            p.every((c, k) => stemsMatch(c, stems[i + k] ?? "")),
+        );
+        if (phrase !== undefined) {
+          out.push("{CITY}");
+          i += phrase.length;
+        } else if (explicit.has(tokens[i] ?? "")) {
+          out.push("{CITY}");
+          i++;
+        } else {
+          out.push(tokens[i] ?? "");
+          i++;
+        }
+      }
+      return out;
+    };
 
     const items: { key: string; shingles: Set<string> }[] = [];
     for (const page of ctx.site.pages) {
       if (!masks.some((m) => matchPath(m, page.key))) continue;
-      const tokens = lang
-        .tokenize(page.mainText)
-        .map((t) => (isCity(t) ? "{CITY}" : t));
+      const tokens = swap(lang.tokenize(page.mainText));
       if (tokens.length < MIN_TOKENS) continue;
       const shingles = new Set<string>();
       for (let i = 0; i + SHINGLE <= tokens.length; i++)
