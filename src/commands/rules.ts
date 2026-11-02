@@ -1,12 +1,28 @@
 import { UsageError } from "../errors.js";
+import { perfRuleMetas } from "../perf/rules.js";
 import { allRules } from "../rules/all.js";
-import type { Rule } from "../rules/types.js";
+import type { RuleMeta } from "../rules/types.js";
 
 export type RulesFormat = "text" | "json" | "md";
 
-const area = (r: Rule): string => `${r.meta.category}/${r.meta.scope}`;
+interface Entry {
+  meta: RuleMeta;
+  runBy?: "perf";
+}
 
-function row(r: Rule): string[] {
+/** `check` rules plus the metadata of rules only the `perf` command runs. */
+const entries = (): Entry[] =>
+  [
+    ...allRules,
+    ...perfRuleMetas.map((meta): Entry => ({ meta, runBy: "perf" })),
+  ].sort((a, b) =>
+    a.meta.id < b.meta.id ? -1 : a.meta.id > b.meta.id ? 1 : 0,
+  );
+
+const area = (r: Entry): string =>
+  `${r.meta.category}/${r.meta.scope}${r.runBy ? " (run by perf command)" : ""}`;
+
+function row(r: Entry): string[] {
   const m = r.meta;
   return [m.id, m.severity, m.launchBlocking ? "yes" : "no", area(r), m.source];
 }
@@ -27,9 +43,7 @@ function pad(rows: string[][]): string {
 }
 
 export function listRules(format: RulesFormat): string {
-  const rules = [...allRules].sort((a, b) =>
-    a.meta.id < b.meta.id ? -1 : a.meta.id > b.meta.id ? 1 : 0,
-  );
+  const rules = entries();
   if (format === "json")
     return `${JSON.stringify(
       rules.map((r) => ({
@@ -40,6 +54,7 @@ export function listRules(format: RulesFormat): string {
         area: area(r),
         source: r.meta.source,
         defaultOff: r.meta.defaultOff ?? false,
+        ...(r.runBy ? { runBy: r.runBy } : {}),
       })),
       null,
       2,
@@ -54,7 +69,7 @@ export function listRules(format: RulesFormat): string {
 }
 
 export function explainRule(id: string): string {
-  const rule = allRules.find((r) => r.meta.id === id);
+  const rule = entries().find((r) => r.meta.id === id);
   if (!rule) throw new UsageError(`Unknown rule: ${id}`);
   const m = rule.meta;
   const lines = [
@@ -65,6 +80,8 @@ export function explainRule(id: string): string {
     `Source: ${m.source}`,
     `Default options: ${m.defaultOptions ? JSON.stringify(m.defaultOptions) : "none"}`,
   ];
+  if (rule.runBy)
+    lines.push("Run by: the perf command (mielikki perf <url>), not check");
   if (m.defaultOff) lines.push("Off by default: enable via rules.enable");
   return `${lines.join("\n")}\n`;
 }

@@ -7,6 +7,7 @@ import {
 } from "commander";
 import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
+import { runPerf } from "./commands/perf.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -116,6 +117,59 @@ export function buildProgram(): Command {
           timeout: o.timeout,
           maxBytes: o.maxBytes,
           respectRobots: o.respectRobots === true,
+        },
+        {
+          cwd: process.cwd(),
+          isTTY: process.stdout.isTTY === true,
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  program
+    .command("perf")
+    .description(
+      "Measure Lighthouse performance of running pages (needs lighthouse and chrome-launcher installed; results vary between runs)",
+    )
+    .argument("<url...>", "http(s) page URLs to measure")
+    .option("--config <path>", "path to config file")
+    .addOption(
+      new Option("--preset <p>", "mobile or desktop")
+        .choices(["mobile", "desktop"])
+        .default("mobile"),
+    )
+    .option("--runs <n>", "runs per URL; the median is reported", int(true), 1)
+    .option(
+      "--chrome-path <path>",
+      "Chrome executable (default: CHROME_PATH or autodetect)",
+    )
+    .option("--no-sandbox", "start Chrome with --no-sandbox (containers, CI)")
+    .addOption(format())
+    .option("--output <file>", "write the report to a file")
+    .addOption(
+      new Option("--fail-on <sev>", "exit 1 on findings at or above")
+        .choices(["error", "warning", "info"])
+        .default("error"),
+    )
+    .exitOverride()
+    .action(async (urls: string[], o) => {
+      process.exitCode = await runPerf(
+        urls,
+        {
+          config: o.config,
+          preset: o.preset,
+          runs: o.runs,
+          chromePath: o.chromePath,
+          // commander's --no-sandbox sets `sandbox` (default true)
+          noSandbox: o.sandbox === false,
+          format: o.format,
+          output: o.output,
+          failOn: o.failOn,
         },
         {
           cwd: process.cwd(),

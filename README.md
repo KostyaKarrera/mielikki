@@ -2,7 +2,7 @@
 
 Local, offline SEO audit CLI for built static sites. Point it at a build directory (`dist/`), get a list of concrete problems with fixes. Deterministic, no telemetry, no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at.
 
-> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works; URL mode (`check <url>`) crawls a running site and applies the same rules (HTTP-specific checks are still to come). Not implemented yet, planned in later releases: `perf` (Lighthouse), `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those commands do not exist yet.
+> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works; URL mode (`check <url>`) crawls a running site and applies the same rules (HTTP-specific checks are still to come). `perf` (Lighthouse) measures running pages. Not implemented yet, planned in later releases: `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those two commands do not exist yet.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
@@ -92,6 +92,21 @@ npx mielikki check https://sahko.example/ --max-pages 50
 Crawl limits (ignored for a directory): `--max-pages <n>` (200), `--max-assets <n>` (300), `--concurrency <n>` (4 for local hosts, 2 otherwise), `--delay <ms>` between requests (0 local, 100 otherwise), `--timeout <ms>` per request (15000), `--max-bytes <n>` per response (5000000), `--respect-robots` (skip URLs disallowed for `*`). At most 10 redirects are followed. User agent: `Mielikki/<version> (+https://github.com/KostyaKarrera/mielikki)`.
 
 Only audit sites you own or have permission to audit: for a non-local host other than `config.site`, a warning is printed to stderr. A start URL with credentials, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL (network error, timeout, HTTP 4xx/5xx) are usage errors (exit 2).
+
+## Performance (`perf`)
+
+```sh
+npm i -D lighthouse chrome-launcher     # optional peer dependencies, needed only for perf
+npx mielikki perf https://example.fi/ --preset mobile --runs 3
+```
+
+`mielikki perf <url...>` runs Lighthouse (performance category only) in headless Chrome against each URL and reports Core Web Vitals style findings: `perf/lcp`, `perf/cls`, `perf/tbt` (a lab proxy for INP), `perf/fcp`, `perf/opportunity`, a reference-only `perf/score`, and `perf/run-failed` when a URL could not be measured (other URLs keep their results). Thresholds follow web.dev: poor is a warning, needs improvement is info. These rules are listed by `rules` but are never run by `check`.
+
+Lighthouse 13 needs Node 22.19 or newer and Google Chrome (found via `chrome-launcher`, `CHROME_PATH` or `--chrome-path`). Use `--no-sandbox` in containers and CI. If Lighthouse or Chrome is missing, `perf` exits with code 2 and an install hint.
+
+Flags: `--preset mobile|desktop` (default mobile), `--runs <n>` (median of n runs, default 1), `--chrome-path`, `--no-sandbox`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info` (default error), `--config <path>`.
+
+Unlike `check`, perf output is a measurement: it is not deterministic and differs between runs and machines. Use `--runs 3` or more for steadier numbers.
 
 ## Exit codes
 

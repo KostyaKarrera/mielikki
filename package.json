@@ -47,5 +47,17 @@
     "snowball-stemmers": "0.6.0",
     "yaml": "2.9.1",
     "zod": "4.6.7"
+  },
+  "peerDependencies": {
+    "chrome-launcher": ">=1",
+    "lighthouse": ">=13"
+  },
+  "peerDependenciesMeta": {
+    "chrome-launcher": {
+      "optional": true
+    },
+    "lighthouse": {
+      "optional": true
+    }
   }
 }

@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("package", () => {
@@ -10,12 +18,22 @@ describe("package", () => {
     };
     expect(pkg.scripts.prepare).toBe("npm run build");
     expect(pkg.bin.mielikki).toBe("dist/cli.js");
-    // dist exists (global setup built it); --ignore-scripts avoids a rebuild here.
-    const r = spawnSync(
-      "npm",
-      ["pack", "--dry-run", "--json", "--ignore-scripts"],
-      { encoding: "utf8", shell: process.platform === "win32" },
+    // npm 10 runs `prepare` on `npm pack` even with --ignore-scripts, which
+    // rewrites dist/ while other tests spawn the CLI. Pack a scratch copy of
+    // the package (scripts removed) instead of the live checkout.
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "mielikki-pack-"));
+    for (const f of ["dist", "vendor", "LICENSE", "NOTICE"])
+      cpSync(f, path.join(tmp, f), { recursive: true });
+    writeFileSync(
+      path.join(tmp, "package.json"),
+      JSON.stringify({ ...pkg, scripts: {} }),
     );
+    const r = spawnSync("npm", ["pack", "--dry-run", "--json"], {
+      cwd: tmp,
+      encoding: "utf8",
+      shell: process.platform === "win32",
+    });
+    rmSync(tmp, { recursive: true, force: true });
     expect(r.status).toBe(0);
     const [info] = JSON.parse(r.stdout) as { files: { path: string }[] }[];
     const files = (info?.files ?? []).map((f) => f.path);

@@ -1,4 +1,5 @@
 import type { Severity } from "../config/schema.js";
+import { perfRuleMetas } from "../perf/rules.js";
 import { allRules } from "../rules/all.js";
 import type { Finding, Profile } from "../rules/types.js";
 
@@ -36,6 +37,8 @@ export function groupByRule(findings: Finding[]): Map<string, Finding[]> {
 
 /** `ruleId — title` when the rule is registered, else just the id. */
 export function ruleLabel(ruleId: string): string {
-  const rule = allRules.find((r) => r.meta.id === ruleId);
-  return rule ? `${ruleId} — ${rule.meta.title}` : ruleId;
+  const meta =
+    allRules.find((r) => r.meta.id === ruleId)?.meta ??
+    perfRuleMetas.find((m) => m.id === ruleId);
+  return meta ? `${ruleId} — ${meta.title}` : ruleId;
 }

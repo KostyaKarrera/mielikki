@@ -79,6 +79,13 @@
 | local/tel-link | warning | no | local/page | claude-seo:skills/seo-local/SKILL.md |
 | mobile/viewport-missing | warning | no | mobile/page | https://developers.google.com/search/mobile-sites/mobile-first-indexing |
 | mobile/zoom-disabled | warning | no | mobile/page | https://developer.chrome.com/docs/lighthouse/accessibility/meta-viewport |
+| perf/cls | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/fcp | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/lcp | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/opportunity | info | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/run-failed | warning | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/score | info | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/tbt | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
 | schema/area-served | warning | no | schema/site | https://developers.google.com/search/docs/appearance/structured-data/local-business |
 | schema/business-generic-type | warning | no | schema/site | https://schema.org/LocalBusiness |
 | schema/business-missing | error | yes | schema/site | https://developers.google.com/search/docs/appearance/structured-data/local-business |

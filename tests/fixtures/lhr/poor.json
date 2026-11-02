@@ -1,0 +1,96 @@
+{
+  "finalDisplayedUrl": "https://example.test/",
+  "configSettings": {
+    "formFactor": "mobile"
+  },
+  "categories": {
+    "performance": {
+      "score": 0.31
+    }
+  },
+  "audits": {
+    "largest-contentful-paint": {
+      "id": "largest-contentful-paint",
+      "title": "Largest Contentful Paint",
+      "score": 0.5,
+      "numericValue": 5200,
+      "displayValue": "5.2 s"
+    },
+    "cumulative-layout-shift": {
+      "id": "cumulative-layout-shift",
+      "title": "Cumulative Layout Shift",
+      "score": 0.5,
+      "numericValue": 0.31,
+      "displayValue": "0.31"
+    },
+    "total-blocking-time": {
+      "id": "total-blocking-time",
+      "title": "Total Blocking Time",
+      "score": 0.5,
+      "numericValue": 800,
+      "displayValue": "800 ms"
+    },
+    "first-contentful-paint": {
+      "id": "first-contentful-paint",
+      "title": "First Contentful Paint",
+      "score": 0.5,
+      "numericValue": 3400,
+      "displayValue": "3.4 s"
+    },
+    "render-blocking-resources": {
+      "id": "render-blocking-resources",
+      "title": "Eliminate render-blocking resources",
+      "score": 0.2,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 1200
+      }
+    },
+    "unused-javascript": {
+      "id": "unused-javascript",
+      "title": "Reduce unused JavaScript",
+      "score": 0.3,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 800
+      }
+    },
+    "uses-optimized-images": {
+      "id": "uses-optimized-images",
+      "title": "Efficiently encode images",
+      "score": 0.5,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 450
+      }
+    },
+    "unminified-css": {
+      "id": "unminified-css",
+      "title": "Minify CSS",
+      "score": 0.85,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 300
+      }
+    },
+    "uses-text-compression": {
+      "id": "uses-text-compression",
+      "title": "Enable text compression",
+      "score": 0.6,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 299
+      }
+    },
+    "offscreen-images": {
+      "id": "offscreen-images",
+      "title": "Defer offscreen images",
+      "score": 0.95,
+      "details": {
+        "type": "opportunity",
+        "overallSavingsMs": 900
+      }
+    }
+  },
+  "runWarnings": []
+}
