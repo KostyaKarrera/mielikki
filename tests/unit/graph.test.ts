@@ -44,24 +44,32 @@ describe("buildSiteGraph", () => {
       '<main><a href="/b/">b</a><a href="/a/">self</a></main>',
     );
     const dup = mk("/a/", '<main><a href="/z/">z</a></main>');
-    const b = mk("/b/", "<main>b</main>");
+    const b = mk("/b/", '<main><a href="/c/">c</a></main>');
+    const c = mk("/c/", "<main>c</main>");
     const orphan = mk("/orphan/", '<main><a href="/b/">b</a></main>');
     const nf = mk("/404.html", '<main><a href="/only-nf/">x</a></main>');
     const g = buildSiteGraph({
-      pages: [root, a, dup, b, orphan],
+      pages: [root, a, dup, b, c, orphan],
       notFound: nf,
       config,
     });
-    expect(g.unique).toEqual([root, a, b, orphan]);
+    expect(g.unique).toEqual([root, a, b, c, orphan]);
     expect(g.byKey.get("/a/")).toBe(a);
-    expect(Object.fromEntries(g.depth)).toEqual({ "/": 0, "/a/": 1, "/b/": 1 });
+    expect(Object.fromEntries(g.depth)).toEqual({
+      "/": 0,
+      "/a/": 1,
+      "/b/": 1,
+      "/c/": 2,
+    });
     expect(Object.fromEntries(g.inlinks)).toEqual({
       "/a/": ["/"],
       "/b/": ["/a/", "/orphan/"],
+      "/c/": ["/b/"],
     });
     expect(Object.fromEntries(g.inlinksAll)).toEqual({
       "/a/": ["/"],
       "/b/": ["/", "/a/", "/orphan/"],
+      "/c/": ["/b/"],
     });
     expect(g.depth.has("/orphan/")).toBe(false);
     expect(nf.links[0]?.internal).toBe(true);
