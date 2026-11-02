@@ -1,35 +1,58 @@
-import { slashVariant } from "../../load/probes.js";
+import { isIgnored } from "../../model/indexable.js";
+import { pageKey } from "../../model/url.js";
+import { isAssetPath } from "../../net/policy.js";
 import type { SiteRule } from "../types.js";
+import { internalRecords } from "./_helpers.js";
+
+const byString = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 export const rule: SiteRule = {
   meta: {
     id: "http/slash-variants",
-    title: "Page is also served with the opposite trailing slash",
+    title: "Page is also served at another URL (trailing slash, index.html)",
     category: "http",
     severity: "warning",
     scope: "site",
     inputs: ["url"],
     launchBlocking: false,
-    fix: "Redirect one trailing-slash form to the other with a 301.",
+    fix: "Redirect the other URL forms (opposite trailing slash, /index.html, other spelling) to the main URL with a 301.",
     source:
       "https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls",
   },
   checkSite(ctx) {
-    const { site } = ctx;
+    const { site, config } = ctx;
     const origin = site.origin;
-    if (origin === undefined || site.responses === undefined) return;
-    for (const p of site.pages) {
-      if (p.key === "/") continue;
-      const path =
-        p.url !== undefined ? new URL(p.url).pathname : encodeURI(p.key);
-      const other = slashVariant(path);
-      if (other === undefined) continue;
-      const rec = site.responses.get(`${origin}${other}`);
-      // A redirected request (e.g. a crawled link) is not a duplicate.
-      if (rec?.final?.status !== 200 || rec.hops.length > 0) continue;
+    if (origin === undefined) return;
+    // Every URL that answered 200 itself (not via a redirect: /a -> /a/ is fine),
+    // crawled or probed, grouped by the page it is a form of.
+    const groups = new Map<string, Set<string>>();
+    for (const [, rec] of internalRecords(site)) {
+      const f = rec.final;
+      if (f?.status !== 200 || rec.hops.length > 0 || !URL.canParse(f.url))
+        continue;
+      const u = new URL(f.url);
+      if (u.origin !== origin || isAssetPath(u.pathname)) continue;
+      const key = pageKey(u.pathname);
+      if (isIgnored(config, key)) continue;
+      const set = groups.get(key) ?? new Set<string>();
+      groups.set(key, set);
+      set.add(u.pathname);
+    }
+    for (const key of [...groups.keys()].sort(byString)) {
+      const paths = [...(groups.get(key) as Set<string>)].sort(byString);
+      if (paths.length < 2) continue;
+      const page = site.byKey.get(key);
+      const own = page?.url !== undefined ? new URL(page.url).pathname : "";
+      const main = paths.includes(own) ? own : (paths[0] as string);
+      const others = paths.filter((p) => p !== main);
+      const message =
+        others.length === 1
+          ? `Both ${main} and ${others[0]} answer 200 (duplicate content)`
+          : `${main}, ${others.slice(0, -1).join(", ")} and ${others.at(-1)} all answer 200 (duplicate content)`;
       ctx.report({
-        url: p.url ?? `${origin}${path}`,
-        message: `Both ${path} and ${other} answer 200 (duplicate content)`,
+        url: page?.url ?? `${origin}${main}`,
+        message,
+        details: { urls: paths.map((p) => `${origin}${p}`) },
       });
     }
   },
