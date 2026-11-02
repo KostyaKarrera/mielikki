@@ -1,4 +1,4 @@
-import { isIndexable } from "../../model/indexable.js";
+import { isIgnored, isIndexable } from "../../model/indexable.js";
 import { resolveHref } from "../../model/url.js";
 import { isTargetPage } from "../targets/_helpers.js";
 import type { PageRule } from "../types.js";
@@ -23,6 +23,7 @@ export const rule: PageRule = {
     const target = resolveHref(page.canonical, page.key, site.site);
     if (!target.internal || target.key === undefined || target.key === page.key)
       return;
+    if (isIgnored(site.config, target.key)) return; // not judged
     const targetPage = site.byKey.get(target.key);
     if (targetPage === undefined)
       ctx.report({

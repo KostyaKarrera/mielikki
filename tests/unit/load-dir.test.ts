@@ -127,4 +127,29 @@ describe("loadDir robustness", () => {
     expect(site.pages.map((p) => p.key)).toEqual(["/a%20b/"]);
     expect(site.assets.has("/img/a%20b.jpg")).toBe(true);
   });
+
+  it("/404/index.html is the not-found page, not a normal page", async () => {
+    const site = await siteFrom({
+      "index.html": "<p>x</p>",
+      "404/index.html": "<p>nf</p>",
+    });
+    expect(site.notFound?.file).toBe("404/index.html");
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(site.byKey.has("/404/")).toBe(false);
+  });
+
+  it("exclude.ignore removes pages from site.pages but keeps them resolvable", async () => {
+    const site = await siteFrom(
+      {
+        "index.html": '<main><a href="/vanha/">v</a></main>',
+        "vanha/index.html": '<main><a href="/">home</a></main>',
+      },
+      { exclude: { noindexExpected: [], ignore: ["/vanha/*"] } },
+    );
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(site.byKey.has("/vanha/")).toBe(true);
+    expect(site.inlinks.get("/vanha/")).toEqual(["/"]);
+    expect(site.inlinks.get("/")).toEqual(["/vanha/"]);
+    expect(site.depth.get("/vanha/")).toBe(1);
+  });
 });

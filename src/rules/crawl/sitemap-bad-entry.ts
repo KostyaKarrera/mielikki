@@ -1,4 +1,4 @@
-import { isIndexable } from "../../model/indexable.js";
+import { isIgnored, isIndexable } from "../../model/indexable.js";
 import type { SiteRule } from "../types.js";
 import { ownPageEntries } from "./_helpers.js";
 
@@ -21,7 +21,7 @@ export const rule: SiteRule = {
     for (const e of ownPageEntries(site)) {
       if (seen.has(e.key)) continue;
       seen.add(e.key);
-      if (site.assets.has(e.key)) continue;
+      if (site.assets.has(e.key) || isIgnored(site.config, e.key)) continue;
       const page = site.byKey.get(e.key);
       if (page === undefined)
         ctx.report({

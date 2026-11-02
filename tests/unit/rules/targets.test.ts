@@ -95,6 +95,15 @@ describe("targets/not-indexable", () => {
     );
     expect(f).toHaveLength(1);
   });
+  it("fires on robots content=none and googlebot noindex", async () => {
+    for (const m of [
+      '<meta name="robots" content="none">',
+      '<meta name="googlebot" content="noindex">',
+    ])
+      expect(await run(notIndexable, svcFiles({ head: m }), t), m).toHaveLength(
+        1,
+      );
+  });
   it("fires on robots.txt disallow", async () => {
     const f = await run(
       notIndexable,

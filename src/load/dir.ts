@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { Config } from "../config/schema.js";
+import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import { parsePage } from "../parse/page.js";
@@ -8,6 +9,8 @@ import { parseRobots } from "../parse/robots.js";
 import { parseSitemap, type SitemapInfo } from "../parse/sitemap.js";
 
 const HTML = /\.html?$/i;
+/** The not-found page: /404.html, or /404/index.html of directory-style builds. */
+const NOT_FOUND = /^404(\/index)?\.html?$/i;
 const DEFAULT_SITEMAPS = [
   "/sitemap.xml",
   "/sitemap-index.xml",
@@ -123,7 +126,7 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
     if (HTML.test(rel)) {
       const html = await readFile(path.join(root, rel), "utf8");
       const page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
-      if (rel === "404.html") notFound = page;
+      if (NOT_FOUND.test(rel)) notFound ??= page;
       else pages.push(page);
     } else {
       const key = `/${rel}`;
@@ -195,7 +198,8 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
     input: { kind: "dir", root },
     config,
     site: siteUrl,
-    pages: unique,
+    // exclude.ignore: not checked, but kept in byKey/inlinks/depth so links resolve.
+    pages: unique.filter((p) => !isIgnored(config, p.key)),
     notFound,
     robots,
     sitemaps,

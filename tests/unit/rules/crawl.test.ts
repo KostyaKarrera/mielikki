@@ -608,3 +608,34 @@ describe("crawl rules skip config target pages (targets/not-indexable reports th
     expect(await ids(canonicalTarget, files, cfg)).toEqual([]);
   });
 });
+
+describe("robots meta variants reach the crawl rules", () => {
+  it("crawl/noindex fires on content=none and on googlebot noindex", async () => {
+    for (const m of [
+      '<meta name="robots" content="none">',
+      '<meta name="googlebot" content="noindex">',
+    ])
+      expect(
+        await ids(noindex, { ...twoPages, "a/index.html": doc(m) }),
+        m,
+      ).toEqual(["/a/"]);
+  });
+});
+
+describe("exclude.ignore in sitemap rules", () => {
+  it("an ignored page listed in the sitemap is neither gone nor bad", async () => {
+    const files = {
+      ...twoPages,
+      "sitemap.xml": sitemap(`${H}/`, `${H}/a/`),
+    };
+    const cfg = { site: H, exclude: { noindexExpected: [], ignore: ["/a/"] } };
+    expect(await ids(sitemapBadEntry, files, cfg)).toEqual([]);
+    expect(await ids(sitemapMissingPage, files, cfg)).toEqual([]);
+  });
+  it("summary-relevant: ignored pages are not in site.pages", async () => {
+    const site = await siteFrom(twoPages, {
+      exclude: { noindexExpected: [], ignore: ["/a/"] },
+    });
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+  });
+});

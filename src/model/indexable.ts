@@ -1,6 +1,12 @@
+import type { Config } from "../config/schema.js";
 import { matchPath } from "../rules/glob.js";
 import type { Page, Site } from "./types.js";
 import { resolveHref } from "./url.js";
+
+/** True when `key` matches `exclude.ignore`: such pages are not checked at all. */
+export function isIgnored(config: Config, key: string): boolean {
+  return config.exclude.ignore.some((p) => matchPath(p, key));
+}
 
 export function isRobotsAllowed(
   site: Site,

@@ -175,4 +175,43 @@ describe("mainText block separation", () => {
         .wordCount,
     ).toBe(3);
   });
+
+  it("is linear in the number of sibling blocks (20k <p>)", () => {
+    const html = `<html><body><main>${"<p>sana</p>".repeat(20_000)}</main></body></html>`;
+    const t = performance.now();
+    const p = pageFrom(html);
+    expect(performance.now() - t).toBeLessThan(1000);
+    expect(p.wordCount).toBe(20_000);
+  });
+  it("handles deep nesting without recursion limits", () => {
+    const html = `<html><body><main>${"<div>".repeat(20_000)}x${"</div>".repeat(20_000)}</main></body></html>`;
+    expect(pageFrom(html).mainText).toBe("x");
+  });
+  it("separates br and ignores script/noscript text", () => {
+    const p = pageFrom(
+      "<html><body><main>a<br>b<script>var z=1</script><noscript>NS</noscript></main></body></html>",
+    );
+    expect(p.mainText).toBe("a b");
+  });
+});
+
+describe("robots meta", () => {
+  const head = (m: string) =>
+    pageFrom(`<html><head>${m}</head><body></body></html>`).robotsMeta;
+  it("'none' means noindex, nofollow", () => {
+    expect(head('<meta name="robots" content="none">')).toEqual([
+      "noindex",
+      "nofollow",
+    ]);
+  });
+  it("merges googlebot meta and dedupes", () => {
+    expect(
+      head(
+        '<meta name="robots" content="follow"><meta name="GoogleBot" content="noindex, follow">',
+      ),
+    ).toEqual(["follow", "noindex"]);
+  });
+  it("ignores metas for other bots", () => {
+    expect(head('<meta name="bingbot" content="noindex">')).toEqual([]);
+  });
 });

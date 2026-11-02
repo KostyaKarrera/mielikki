@@ -1,7 +1,6 @@
 import type { Config, Severity } from "../config/schema.js";
 import { getLang } from "../lang/index.js";
 import type { Page, Site } from "../model/types.js";
-import { matchPath } from "./glob.js";
 import type {
   Finding,
   Profile,
@@ -96,10 +95,7 @@ export async function runRules(
     });
   };
 
-  const pages: Page[] = site.pages.filter(
-    (p) => !config.exclude.ignore.some((g) => matchPath(g, p.key)),
-  );
-
+  const pages: Page[] = site.pages; // exclude.ignore already applied by the loader
   for (const rule of rules) {
     if (!rule.meta.inputs.includes(mode)) continue;
     if ("checkSite" in rule) {
