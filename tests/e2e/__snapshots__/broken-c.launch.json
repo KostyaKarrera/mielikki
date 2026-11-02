@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "tool": {
     "name": "mielikki",
-    "version": "0.1.0"
+    "version": "<version>"
   },
   "input": {
     "kind": "dir",

@@ -22,6 +22,8 @@ export const rule: SiteRule = {
       return;
     }
     const patterns = ctx.lang.privacyPatterns;
+    // No patterns for this language and no configured path: nothing to look for (R13).
+    if (patterns.length === 0) return;
     const found = ctx.site.pages.some((p) =>
       p.links.some(
         (l) =>

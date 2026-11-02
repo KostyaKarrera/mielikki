@@ -42,3 +42,18 @@ describe("en", () => {
     expect(phraseIn("plumber", "Local electricians", en)).toBe("none");
   });
 });
+
+describe("phraseIn details", () => {
+  const en = getLang("en");
+  it("compound check needs a stem of at least 4 chars", () => {
+    expect(phraseIn("car", "carpets for sale", en)).toBe("none");
+    expect(phraseIn("bulb", "lightbulbs for sale", en)).toBe("partial");
+  });
+  it("forms keys are normalized (case, NFC)", () => {
+    expect(phraseIn("foo", "a bar here", en, { FOO: ["bar"] })).toBe("full");
+    const decomposed = "Åland"; // Å as A + combining ring
+    expect(
+      phraseIn("Åland", "ahvenanmaa", en, { [decomposed]: ["ahvenanmaa"] }),
+    ).toBe("full");
+  });
+});

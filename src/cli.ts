@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { Command, CommanderError, Option } from "commander";
-import { runCheck, UsageError } from "./commands/check.js";
+import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
+import { UsageError } from "./errors.js";
 import { VERSION } from "./version.js";
 
 // Exit codes: 0 ok, 1 findings at or above --fail-on, 2 usage/config/launch error.

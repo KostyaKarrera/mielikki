@@ -50,6 +50,25 @@ describe("legal/privacy-policy", () => {
     });
     expect(f).toEqual([]);
   });
+  it("is silent for a language without privacy patterns and no path (R13)", async () => {
+    expect(
+      await run(
+        privacyPolicy,
+        { "index.html": doc() },
+        { language: undefined },
+      ),
+    ).toEqual([]);
+    expect(
+      await run(
+        privacyPolicy,
+        { "index.html": doc() },
+        {
+          language: undefined,
+          rules: { options: { "legal/privacy-policy": { path: "/privacy/" } } },
+        },
+      ),
+    ).toHaveLength(1);
+  });
   it("option path requires that page", async () => {
     const files = {
       "index.html": doc('<a href="/tietosuoja/">Tietosuoja</a>'),

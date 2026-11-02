@@ -132,7 +132,7 @@ function blockText(
 }
 
 export function parsePage(html: string, key: string, file?: string): Page {
-  const $ = load(html.replace(/^﻿/, ""));
+  const $ = load(html.replace(/^\uFEFF/, ""));
 
   const titles = $("title");
   const canonicals = $('link[rel~="canonical" i]');

@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { allRules } from "../../src/rules/all.js";
 
 const CLI = path.resolve("dist/cli.js");
@@ -64,12 +64,24 @@ describe("astro-like fixtures (R16)", () => {
   });
 });
 
+/** Replaces tool.version so a version bump does not break snapshots. */
+const PKG_VERSION = (
+  JSON.parse(readFileSync("package.json", "utf8")) as { version: string }
+).version;
+const normalizeVersion = (json: string): string => {
+  const marker = `"version": ${JSON.stringify(PKG_VERSION)}`;
+  expect(json).toContain(marker);
+  return json.replace(marker, '"version": "<version>"');
+};
+
 describe("broken fixtures", () => {
   const dirs = readdirSync(SITES).filter((d) => d.startsWith("broken-"));
   const fired = new Set<string>();
-  for (const d of dirs)
-    for (const f of report(d, "launch").findings)
-      if (f.severity === "error") fired.add(f.ruleId);
+  beforeAll(() => {
+    for (const d of dirs)
+      for (const f of report(d, "launch").findings)
+        if (f.severity === "error") fired.add(f.ruleId);
+  });
 
   it("exist", () => {
     expect(dirs.length).toBeGreaterThanOrEqual(3);
@@ -95,7 +107,7 @@ describe("broken fixtures", () => {
       ["check", "--profile", "launch", "--format", "json"],
       site("broken-c"),
     );
-    await expect(r.stdout).toMatchFileSnapshot(
+    await expect(normalizeVersion(r.stdout)).toMatchFileSnapshot(
       "__snapshots__/broken-c.launch.json",
     );
     expect(

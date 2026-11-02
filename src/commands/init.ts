@@ -2,11 +2,12 @@ import { access, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import { type Config, parseConfig } from "../config/schema.js";
+import { UsageError } from "../errors.js";
 import { loadDir } from "../load/dir.js";
 import { isLocalUrl } from "../model/host.js";
 import type { Site } from "../model/types.js";
 import { nodesOf, typesOf } from "../rules/schema/_helpers.js";
-import { detectLanguage, UsageError } from "./check.js";
+import { detectLanguage } from "./check.js";
 
 export const CONFIG_FILE = "mielikki.config.yaml";
 

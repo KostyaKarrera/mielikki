@@ -16,7 +16,7 @@ export const rule: PageRule = {
   },
   checkPage(page, ctx) {
     const policy = ctx.config.input.trailingSlash;
-    if (policy === "ignore") return;
+    if (policy !== "always" && policy !== "never") return;
     const seen = new Set<string>();
     for (const l of navigableInternal(page.links)) {
       // Only page links: files (assets) and explicit .html paths are out of scope.

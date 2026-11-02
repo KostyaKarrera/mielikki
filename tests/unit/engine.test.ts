@@ -187,6 +187,24 @@ describe("engine", () => {
     expect(f.some((x) => x.ruleId === "t/ok")).toBe(true);
   });
 
+  it("page rule crash carries the page url", async () => {
+    const site = await siteFrom(files);
+    const bad: PageRule = {
+      meta: { ...base, id: "t/pbad", scope: "page" },
+      checkPage: (page) => {
+        if (page.key === "/a/") throw new Error("boom");
+      },
+    };
+    const f = await runRules(site, [bad], site.config, "dev");
+    expect(f).toEqual([
+      expect.objectContaining({
+        ruleId: "internal/rule-error",
+        url: "/a/",
+        message: "t/pbad: boom",
+      }),
+    ]);
+  });
+
   it("options merges config over defaults", async () => {
     const site = await siteFrom(
       files,

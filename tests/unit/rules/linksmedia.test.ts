@@ -205,6 +205,11 @@ describe("links/trailing-slash", () => {
   it("ignore: does nothing", async () => {
     expect(await msgs(trailingSlash, files)).toEqual([]);
   });
+  it("does nothing for any policy other than always|never", async () => {
+    const site = await siteFrom(files);
+    (site.config.input as { trailingSlash: string }).trailingSlash = "bogus";
+    expect(await runRule(trailingSlash, site)).toEqual([]);
+  });
 });
 
 describe("images/broken", () => {
@@ -486,6 +491,20 @@ describe("i18n/hreflang", () => {
       expect.stringContaining("no x-default"),
     ]);
     expect(await msgs(hreflang, one(doc(alt("fi", `${H}/`))), cfg)).toEqual([]);
+  });
+  it("accepts codes and x-default in any letter case", async () => {
+    const mixed = [
+      alt("FI", `${H}/`),
+      alt("en-GB", `${H}/en/`),
+      alt("X-Default", `${H}/`),
+    ].join("");
+    expect(
+      await msgs(
+        hreflang,
+        { "index.html": doc(mixed), "en/index.html": doc(mixed) },
+        cfg,
+      ),
+    ).toEqual([]);
   });
   it("silent without hreflang", async () => {
     expect(await msgs(hreflang, one(doc()), cfg)).toEqual([]);

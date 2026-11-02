@@ -1,6 +1,6 @@
+import { UsageError } from "../errors.js";
 import { allRules } from "../rules/all.js";
 import type { Rule } from "../rules/types.js";
-import { UsageError } from "./check.js";
 
 export type RulesFormat = "text" | "json" | "md";
 

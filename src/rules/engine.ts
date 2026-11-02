@@ -86,13 +86,15 @@ export async function runRules(
     },
   });
 
-  const crash = (rule: Rule, e: unknown): void => {
-    findings.push({
+  const crash = (rule: Rule, e: unknown, url?: string): void => {
+    const finding: Finding = {
       ruleId: "internal/rule-error",
       severity: "warning",
       message: `${rule.meta.id}: ${e instanceof Error ? e.message : String(e)}`,
       fix: "This is a bug in the rule; please report it.",
-    });
+    };
+    if (url !== undefined) finding.url = url;
+    findings.push(finding);
   };
 
   const pages: Page[] = site.pages; // exclude.ignore already applied by the loader
@@ -109,7 +111,7 @@ export async function runRules(
         try {
           await rule.checkPage(page, makeCtx(rule, page.key));
         } catch (e) {
-          crash(rule, e);
+          crash(rule, e, page.key);
         }
       }
     }

@@ -2,6 +2,7 @@ import { readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "../config/load.js";
 import type { Config, Severity } from "../config/schema.js";
+import { UsageError } from "../errors.js";
 import { loadDir } from "../load/dir.js";
 import type { Page } from "../model/types.js";
 import { renderJson } from "../report/json.js";
@@ -23,9 +24,6 @@ export interface CheckOptions {
   rules?: string;
   minSeverity: Severity;
 }
-
-/** Thrown for launch errors that map to exit code 2. */
-export class UsageError extends Error {}
 
 const SUPPORTED = ["fi", "sv", "en"] as const;
 

@@ -1,7 +1,7 @@
 import { resolveHref } from "../../model/url.js";
 import type { PageRule } from "../types.js";
 
-const LANG = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+const LANG = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i;
 
 export const rule: PageRule = {
   meta: {
@@ -21,7 +21,7 @@ export const rule: PageRule = {
     if (page.hreflang.length === 0) return;
     for (const h of page.hreflang) {
       const code = h.lang.trim();
-      if (code !== "x-default" && !LANG.test(code)) {
+      if (code.toLowerCase() !== "x-default" && !LANG.test(code)) {
         ctx.report({
           message: `hreflang "${h.lang}" is not a valid language code`,
         });

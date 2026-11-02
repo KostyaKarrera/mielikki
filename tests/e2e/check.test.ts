@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,9 @@ import { describe, expect, it } from "vitest";
 const CLI = path.resolve("dist/cli.js");
 const run = (args: string[], cwd?: string) =>
   spawnSync("node", [CLI, ...args], { encoding: "utf8", cwd });
+const PKG_VERSION = (
+  JSON.parse(readFileSync("package.json", "utf8")) as { version: string }
+).version;
 const tmp = () => mkdtempSync(path.join(os.tmpdir(), "mielikki-e2e-"));
 
 describe("check / rules", () => {
@@ -40,6 +43,9 @@ describe("check / rules", () => {
     );
     expect(r.status).toBe(1); // missing H1 and robots.txt are errors
     const j = JSON.parse(r.stdout);
+    // the version is checked here, then normalized so releases keep the snapshot
+    expect(j.tool.version).toBe(PKG_VERSION);
+    j.tool.version = "<version>";
     expect(j).toMatchInlineSnapshot(`
       {
         "findings": [
@@ -72,7 +78,7 @@ describe("check / rules", () => {
         },
         "tool": {
           "name": "mielikki",
-          "version": "0.1.0",
+          "version": "<version>",
         },
       }
     `);
