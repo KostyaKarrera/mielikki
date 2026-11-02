@@ -26,7 +26,9 @@ npx mielikki init dist      # writes mielikki.config.yaml, detecting language, s
 npx mielikki check dist     # prints findings; exit code 1 if any error
 ```
 
-`init` only guesses; review the generated file. `check` without an argument uses `input.dir` from the config.
+`init` only guesses; review the generated file. It never writes a local or private origin (localhost, 192.168.x.x, ...) as `site:`. `check` without an argument uses `input.dir` from the config.
+
+The input directory is read as plain files: symbolic links (files and directories) are skipped silently, so a build that symlinks pages in will look incomplete.
 
 ## Configuration
 
@@ -35,7 +37,7 @@ npx mielikki check dist     # prints findings; exit code 1 if any error
 ```yaml
 site: https://example.fi
 language: fi # fi | sv | en; detected from <html lang> if omitted
-region: FI
+region: FI # reserved for future use; no rule reads it yet
 prelaunch: true # the site is intentionally closed for now
 input:
   dir: dist
@@ -80,11 +82,11 @@ Options: `--config <path>`, `--profile dev|launch`, `--format text|json|md`, `--
 
 ## Exit codes
 
-| Code | Meaning                                                                                   |
-| ---- | ----------------------------------------------------------------------------------------- |
-| 0    | No findings at or above `--fail-on` (default `error`)                                     |
-| 1    | At least one finding at or above `--fail-on`                                              |
-| 2    | Usage or configuration error (bad flag, invalid config, missing or empty input directory) |
+| Code | Meaning                                                                                                 |
+| ---- | ------------------------------------------------------------------------------------------------------- |
+| 0    | No findings at or above `--fail-on` (default `error`)                                                   |
+| 1    | At least one finding at or above `--fail-on`                                                            |
+| 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it) |
 
 ## Use with Claude Code
 
@@ -104,7 +106,7 @@ The full generated list is in [docs/rules.md](docs/rules.md) (regenerate with `n
 | -------- | --------------------------------------------------------------------------------------------------------- |
 | crawl    | robots.txt, sitemap, noindex, canonical targets, depth, orphan pages                                      |
 | core     | title, meta description, H1 and heading order, canonical, lang, charset                                   |
-| links    | broken and redirecting internal links, anchors, dead ends, trailing slash                                 |
+| links    | broken internal links, anchors, dead ends, trailing slash                                                 |
 | content  | text volume, near-duplicates, placeholders, test contacts, keyword stuffing                               |
 | schema   | JSON-LD validity and validation, business type, NAP vs config, areaServed, fake ratings, deprecated types |
 | local    | consistent phone and name, `tel:` links, swap test for area pages                                         |
@@ -129,7 +131,7 @@ One problem is reported once, by the most specific rule; rules that depend on it
 
 ## Acknowledgements
 
-Many rules and thresholds are derived from claude-seo by AgriciDaniel (MIT) and squirrelscan (MIT), plus Google Search Central documentation. See [NOTICE](NOTICE) for details, including bundled schema.org data (CC BY-SA 3.0).
+Many rules and thresholds are derived from [claude-seo](https://github.com/AgriciDaniel/claude-seo) by AgriciDaniel (MIT) and [squirrelscan](https://github.com/squirrelscan/squirrelscan) (MIT), plus Google Search Central documentation. See [NOTICE](NOTICE) for details, including bundled schema.org data (CC BY-SA 3.0).
 
 ## Development
 

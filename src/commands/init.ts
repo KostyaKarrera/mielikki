@@ -163,7 +163,6 @@ export function renderConfig(
     "input:",
     `  dir: ${q(inputDir)}`,
     "  trailingSlash: ignore # always | never | ignore",
-    "  cleanUrls: true",
     "",
   ];
   const b = d.business;
@@ -197,7 +196,8 @@ export function renderConfig(
     "  phones: []",
     "  emails: []",
     "",
-    "# Target pages. required: URL patterns that must exist and be indexable.",
+    "# Target pages. required: URL patterns of pages that must have a target query",
+    "# (targets/missing-target) and use the higher word-count threshold.",
     "# pages: search-query targets, e.g.",
     "#   - url: /palvelut/",
     "#     primary: main query",

@@ -94,6 +94,37 @@ describe("check / rules", () => {
     expect(run([...args, "--profile", "launch"], cwd).status).toBe(1);
   });
 
+  it("warns once per rules entry that matches no rule; exit code unaffected", () => {
+    const cwd = tmp();
+    mkdirSync(path.join(cwd, "dist"));
+    writeFileSync(
+      path.join(cwd, "dist", "index.html"),
+      '<html lang="fi"><head><title>x</title></head><body><h1>x</h1></body></html>',
+    );
+    writeFileSync(
+      path.join(cwd, "mielikki.config.yaml"),
+      [
+        "rules:",
+        "  disable: [x/y, images/*]",
+        "  enable: [nope/*]",
+        "  severity: { core/titel-length: info, core/title-length: info }",
+        "  launchBlocking: { a/b: false }",
+        "  options: { c/d: { min: 1 } }",
+        "",
+      ].join("\n"),
+    );
+    const args = ["check", "--rules", "core/h1-missing"];
+    const r = run(args, cwd);
+    expect(r.status).toBe(0);
+    expect(r.stderr.trim().split("\n")).toEqual([
+      'mielikki: warning: rules.disable "x/y" matches no rule',
+      'mielikki: warning: rules.enable "nope/*" matches no rule',
+      'mielikki: warning: rules.severity "core/titel-length" matches no rule',
+      'mielikki: warning: rules.launchBlocking "a/b" matches no rule',
+      'mielikki: warning: rules.options "c/d" matches no rule',
+    ]);
+  });
+
   it("bad config → exit 2, stderr has field path", () => {
     const cwd = tmp();
     mkdirSync(path.join(cwd, "dist"));

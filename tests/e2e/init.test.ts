@@ -108,6 +108,8 @@ describe("init", () => {
     expect(raw.language).toBe("fi");
     expect(raw.site).toBe("https://testi.fi");
     expect(raw.targets.required).toEqual(["/"]);
+    expect(read(cwd)).toContain("must have a target query");
+    expect(read(cwd)).not.toContain("cleanUrls");
     expect(raw.business).toBeUndefined();
     expect(read(cwd)).toContain("# ");
   });

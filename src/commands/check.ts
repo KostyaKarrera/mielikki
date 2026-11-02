@@ -10,7 +10,7 @@ import { type CheckResult, exitCodeFor } from "../report/result.js";
 import { renderText } from "../report/text.js";
 import { allRules } from "../rules/all.js";
 import { runRules } from "../rules/engine.js";
-import { selectRules } from "../rules/registry.js";
+import { selectRules, unmatchedRuleEntries } from "../rules/registry.js";
 import type { Profile } from "../rules/types.js";
 import { VERSION } from "../version.js";
 
@@ -49,9 +49,16 @@ export function detectLanguage(pages: Page[]): Config["language"] {
 export async function runCheck(
   dirArg: string | undefined,
   opts: CheckOptions,
-  io: { cwd: string; isTTY: boolean; write(s: string): void },
+  io: {
+    cwd: string;
+    isTTY: boolean;
+    write(s: string): void;
+    warn?(s: string): void;
+  },
 ): Promise<number> {
   const config = await loadConfig(io.cwd, opts.config);
+  for (const w of unmatchedRuleEntries(allRules, config))
+    io.warn?.(`mielikki: warning: ${w}`);
   const dir = path.resolve(io.cwd, dirArg ?? config.input.dir);
   try {
     await readdir(dir);

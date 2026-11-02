@@ -13,12 +13,12 @@ export interface TargetPage {
 export interface Config {
   site?: string;
   language?: LangCode;
+  /** Reserved for future use (URL mode, research); no rule reads it yet. */
   region?: string;
   prelaunch: boolean;
   input: {
     dir: string;
     trailingSlash: "always" | "never" | "ignore";
-    cleanUrls: boolean;
   };
   business?: {
     type: "brick-and-mortar" | "service-area" | "hybrid";
@@ -103,10 +103,9 @@ const configSchema = z
       .object({
         dir: z.string().default("dist"),
         trailingSlash: z.enum(["always", "never", "ignore"]).default("ignore"),
-        cleanUrls: z.boolean().default(true),
       })
       .strict()
-      .default({ dir: "dist", trailingSlash: "ignore", cleanUrls: true }),
+      .default({ dir: "dist", trailingSlash: "ignore" }),
     business: business.optional(),
     exclude: z
       .object({ noindexExpected: strings, ignore: strings })

@@ -63,13 +63,18 @@ describe("config", () => {
     expect(cfg.testContacts.phones).toContain("^\\+?358 ?40 ?000");
   });
 
+  it("rejects the removed input.cleanUrls option", () => {
+    expect(() => parseConfig({ input: { cleanUrls: true } })).toThrow(
+      /input\.cleanUrls/,
+    );
+  });
+
   it("applies defaults", () => {
     const cfg = parseConfig({});
     expect(cfg.prelaunch).toBe(false);
     expect(cfg.input).toEqual({
       dir: "dist",
       trailingSlash: "ignore",
-      cleanUrls: true,
     });
     expect(cfg.targets.pages).toEqual([]);
     expect(cfg.rules.enable).toEqual([]);

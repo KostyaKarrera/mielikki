@@ -64,6 +64,9 @@ export function buildProgram(): Command {
           write: (s) => {
             process.stdout.write(s);
           },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
         },
       );
     });

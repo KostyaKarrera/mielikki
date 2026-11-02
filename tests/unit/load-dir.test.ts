@@ -152,4 +152,26 @@ describe("loadDir robustness", () => {
     expect(site.inlinks.get("/")).toEqual(["/vanha/"]);
     expect(site.depth.get("/vanha/")).toBe(1);
   });
+
+  it("skips symlinked files and directories (and cannot loop)", async () => {
+    const { mkdtemp, mkdir, writeFile, symlink, rm } = await import(
+      "node:fs/promises"
+    );
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { loadDir } = await import("../../src/load/dir.js");
+    const { parseConfig } = await import("../../src/config/schema.js");
+    const dir = await mkdtemp(path.join(os.tmpdir(), "mielikki-link-"));
+    try {
+      await mkdir(path.join(dir, "a"));
+      await writeFile(path.join(dir, "index.html"), "<p>x</p>");
+      await writeFile(path.join(dir, "a", "index.html"), "<p>a</p>");
+      await symlink(path.join(dir, "index.html"), path.join(dir, "b.html"));
+      await symlink(dir, path.join(dir, "a", "loop"));
+      const site = await loadDir(dir, parseConfig({}));
+      expect(site.pages.map((p) => p.key)).toEqual(["/", "/a/"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
