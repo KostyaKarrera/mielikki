@@ -164,10 +164,15 @@ describe("check <url>: crawl behaviour", () => {
       delayMs: { "/yhteystiedot/": 3000 },
     });
     const r = await check(`${s.url}/`, dir, { timeout: 300 });
-    expect([0, 1]).toContain(r.code);
     const j = JSON.parse(r.out) as CheckResult;
     // 6 crawlable pages (see PARITY_EXCEPTIONS) minus the one that timed out
     expect(j.summary.pages).toBe(5);
+    expect(r.code).toBe(1);
+    expect(
+      j.findings
+        .filter((f) => f.ruleId === "http/unreachable")
+        .map((f) => [f.url, f.severity]),
+    ).toEqual([[`${s.url}/yhteystiedot/`, "error"]]);
   });
 
   it("--format json is byte-identical across two runs", async () => {
@@ -264,6 +269,16 @@ describe("check <url>: CLI", () => {
     const dir = await copyFixture("good");
     expect(run(["check", "--max-pages", "0"], dir).status).toBe(2);
     expect(run(["check", "--timeout", "abc"], dir).status).toBe(2);
+  });
+
+  it("--timeout and --delay above 2^31-1 ms → exit 2 (timers would overflow)", async () => {
+    const dir = await copyFixture("good");
+    for (const flag of ["--timeout", "--delay"]) {
+      const r = run(["check", flag, "2147483648"], dir);
+      expect(r.status, flag).toBe(2);
+      expect(r.stderr).toMatch(/2147483647/);
+      expect(run(["check", flag, "2147483647"], dir).status, flag).toBe(0);
+    }
   });
 
   it("crawl flags are accepted (and ignored in directory mode)", async () => {

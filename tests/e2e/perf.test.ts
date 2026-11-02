@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runPerf } from "../../src/commands/perf.js";
@@ -10,6 +12,15 @@ import { loadLighthouseRunner } from "../../src/perf/runner.js";
 import type { CheckResult } from "../../src/report/result.js";
 
 const CLI = path.resolve("dist/cli.js");
+/** True when lighthouse can be loaded from this repo (then the CLI would find it). */
+const lighthouseResolves = (() => {
+  try {
+    createRequire(CLI).resolve("lighthouse");
+    return true;
+  } catch {
+    return false;
+  }
+})();
 const lhr = (n: string): LhrSubset =>
   JSON.parse(readFileSync(`tests/fixtures/lhr/${n}.json`, "utf8")) as LhrSubset;
 
@@ -107,15 +118,24 @@ describe("mielikki perf", () => {
     expect((err as Error).message).toContain("CHROME_PATH");
   });
 
-  it("runPerf without an injected runner propagates the loader UsageError", async () => {
-    // lighthouse is not a dependency of this repo, so the real loader fails here
-    // unless someone installed it; skip the assertion in that case.
-    const t = io();
-    const res = await runPerf(["https://a.test/"], OPTS, t.io).catch(
-      (e: unknown) => e,
-    );
-    if (res instanceof Error) expect(res).toBeInstanceOf(UsageError);
-  });
+  it.skipIf(lighthouseResolves)(
+    "CLI without lighthouse installed: exit 2 with the install hint, no stack trace",
+    () => {
+      const cwd = mkdtempSync(path.join(os.tmpdir(), "mielikki-perf-"));
+      try {
+        const r = spawnSync("node", [CLI, "perf", "http://127.0.0.1:9/"], {
+          encoding: "utf8",
+          cwd,
+        });
+        expect(r.status, r.stderr).toBe(2);
+        expect(r.stderr).toContain("npm i -D lighthouse chrome-launcher");
+        expect(r.stderr).not.toMatch(/\n\s+at /);
+        expect(r.stdout).toBe("");
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("CLI: rules explain perf/lcp, rules lists perf rules, bad flags exit 2", () => {
     const ex = spawnSync("node", [CLI, "rules", "explain", "perf/lcp"], {

@@ -146,7 +146,8 @@ export async function loadUrl(
         ? mapToCrawl(new URL(loc.trim()).href, crawlOrigin, siteOrigin)
         : undefined,
     read: async (url, mustExist) => {
-      if (new URL(url).origin !== crawlOrigin) return { error: "left-site" };
+      if (new URL(url).origin !== crawlOrigin)
+        return { error: "listed on another host, not fetched" };
       const rec = await get(url);
       if (rec.stop !== undefined) return { error: rec.stop };
       const f = rec.final;
@@ -213,8 +214,11 @@ export async function loadUrl(
         skipped.add(url);
         continue;
       }
+      // --respect-robots obeys robots.txt for everything but the start URL,
+      // which was asked for explicitly.
       if (
         opts.respectRobots &&
+        url !== startUrlNorm &&
         robots !== undefined &&
         !robots.isAllowed(u.pathname, "*")
       ) {

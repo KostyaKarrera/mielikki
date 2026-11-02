@@ -279,7 +279,11 @@ describe("loadUrl", () => {
     expect(site.robots?.sitemaps).toHaveLength(2);
     expect(site.sitemaps.map((s) => [s.file, s.ok, s.error])).toEqual([
       [`${O}/sm.xml`, false, "too-large"],
-      ["https://foreign.fi/sm.xml", false, "left-site"],
+      [
+        "https://foreign.fi/sm.xml",
+        false,
+        "listed on another host, not fetched",
+      ],
     ]);
   });
 
@@ -344,6 +348,21 @@ describe("loadUrl", () => {
     expect(site.crawl?.limitReached).toBe(false);
   });
 
+  it("respectRobots: the start URL is fetched even when robots.txt disallows /", async () => {
+    const { site, fetcher } = await crawl({
+      [`${O}/robots.txt`]: {
+        html: "User-agent: *\nDisallow: /\n",
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      },
+      [`${O}/`]: html('<a href="/a/">a</a>'),
+      [`${O}/a/`]: html("<p>a</p>"),
+    });
+    expect(fetcher.requested).toContain(`${O}/`);
+    expect(fetcher.requested).not.toContain(`${O}/a/`);
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(site.crawl?.skipped).toEqual([`${O}/a/`]);
+  });
+
   it("respectRobots: disallowed URLs are skipped, not requested", async () => {
     const script: Record<string, ScriptEntry> = {
       [`${O}/robots.txt`]: {
@@ -385,5 +404,22 @@ describe("loadUrl", () => {
 
   it("rejects bad start URLs", async () => {
     await expect(crawl({}, {}, {}, "ftp://a.fi/")).rejects.toThrow();
+  });
+});
+
+describe("loadUrl: sitemaps on another host", () => {
+  it("a robots-listed sitemap on another host is not fetched and says so", async () => {
+    const { site, fetcher } = await crawl({
+      [`${O}/robots.txt`]: {
+        html: "User-agent: *\nAllow: /\nSitemap: https://cdn.example/sitemap.xml\n",
+        headers: { "content-type": "text/plain; charset=utf-8" },
+      },
+      [`${O}/`]: html("<p>x</p>"),
+    });
+    expect(fetcher.requested.some((u) => u.includes("cdn.example"))).toBe(
+      false,
+    );
+    const sm = site.sitemaps.find((s) => s.file.includes("cdn.example"));
+    expect(sm?.error).toBe("listed on another host, not fetched");
   });
 });

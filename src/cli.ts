@@ -21,9 +21,12 @@ const format = (): Option =>
     .choices(["text", "json", "md"])
     .default("text");
 
-/** Parser for a non-negative integer option value (min 1 when `positive`). */
+/** Largest delay a Node.js timer accepts (2^31-1 ms). */
+const MAX_MS = 2_147_483_647;
+
+/** Parser for a non-negative integer option value (min 1 when `positive`, at most `max`). */
 const int =
-  (positive: boolean) =>
+  (positive: boolean, max = Number.MAX_SAFE_INTEGER) =>
   (v: string): number => {
     const n = Number(v);
     if (
@@ -34,6 +37,7 @@ const int =
       throw new InvalidArgumentError(
         positive ? "expected a positive integer" : "expected an integer ≥ 0",
       );
+    if (n > max) throw new InvalidArgumentError(`expected at most ${max}`);
     return n;
   };
 
@@ -85,12 +89,12 @@ export function buildProgram(): Command {
     .option(
       "--delay <ms>",
       "URL mode: pause between requests (0 local, 100 otherwise)",
-      int(false),
+      int(false, MAX_MS),
     )
     .option(
       "--timeout <ms>",
       "URL mode: per-request timeout (15000)",
-      int(true),
+      int(true, MAX_MS),
     )
     .option(
       "--max-bytes <n>",

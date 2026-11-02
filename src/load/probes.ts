@@ -116,7 +116,16 @@ export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
   };
 
   const urls: string[] = [`${origin}${NOT_FOUND_PROBE}`];
-  urls.push(...formProbeUrls(site.input.root));
+  // Requests to the config.site host are rewritten to the crawl host, so a
+  // probe of that host would really probe the crawl host: never send it.
+  const cfg = site.config.site;
+  const siteOrigin =
+    cfg !== undefined && URL.canParse(cfg) ? new URL(cfg).origin : undefined;
+  urls.push(
+    ...formProbeUrls(site.input.root).filter(
+      (u) => new URL(u).origin !== siteOrigin,
+    ),
+  );
   const slashed = [...site.pages]
     .sort((a, b) => byString(a.key, b.key))
     .filter((p) => p.key !== "/")
