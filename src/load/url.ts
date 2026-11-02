@@ -18,6 +18,7 @@ import {
   DEFAULT_SITEMAPS,
   detectSite,
 } from "./graph.js";
+import { formProbeUrls, loadAssets, runProbes } from "./probes.js";
 
 export interface CrawlOptions {
   maxPages: number;
@@ -109,12 +110,17 @@ export async function loadUrl(
     return new URL(mapped).origin === crawlOrigin ? mapped : undefined;
   };
 
-  // Every request goes through here: never to a host other than the crawl host.
-  const request = (url: string): Promise<FetchRecord> => {
-    if (new URL(url).origin !== crawlOrigin)
-      throw new Error(`refusing to request off-host URL ${url}`);
-    return fetcher.get(url);
+  // Every request goes through here: never to a host other than the crawl host,
+  // except the two fixed URL-form probe URLs (http:// and www. variants, follow:false).
+  const probeUrls = new Set(formProbeUrls(start.href));
+  const guarded: Fetcher = {
+    get(url, o) {
+      if (new URL(url).origin !== crawlOrigin && !probeUrls.has(url))
+        throw new Error(`refusing to request off-host URL ${url}`);
+      return fetcher.get(url, o);
+    },
   };
+  const request = (url: string): Promise<FetchRecord> => guarded.get(url);
   const get = async (url: string): Promise<FetchRecord> => {
     const rec = await request(url);
     responses.set(url, rec);
@@ -236,7 +242,7 @@ export async function loadUrl(
     config,
   });
 
-  return {
+  const site: Site = {
     input: { kind: "url", root: startUrl },
     config,
     site: siteUrl,
@@ -256,4 +262,7 @@ export async function loadUrl(
       skipped: [...skipped].sort(byString).slice(0, MAX_SKIPPED),
     },
   };
+  await loadAssets(site, guarded, opts.maxAssets);
+  await runProbes(site, guarded);
+  return site;
 }

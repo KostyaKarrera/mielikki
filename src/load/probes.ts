@@ -1,0 +1,140 @@
+import { isLocalHost } from "../model/host.js";
+import type { Asset, FetchRecord, Site } from "../model/types.js";
+import { pageKey, resolveHref } from "../model/url.js";
+import type { Fetcher } from "../net/fetch.js";
+import { parsePage } from "../parse/page.js";
+
+export const NOT_FOUND_PROBE = "/__mielikki_404__/";
+const MAX_SLASH_PROBES = 10;
+const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
+
+const byString = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+function fileUrl(origin: string, key: string): string {
+  return `${origin}${encodeURI(key)}`;
+}
+
+/**
+ * The only off-origin URLs the crawler may request: the `http://` and the
+ * `www.`/non-`www.` variants of the crawl host (always `follow:false`, never
+ * followed). Empty for local hosts and IP addresses.
+ */
+export function formProbeUrls(startUrl: string): string[] {
+  if (!URL.canParse(startUrl)) return [];
+  const u = new URL(startUrl);
+  if (isLocalHost(u.hostname) || /^[\d.]+$/.test(u.hostname)) return [];
+  if (u.hostname.includes(":")) return []; // IPv6 literal
+  const out: string[] = [];
+  if (u.protocol === "https:") out.push(`http://${u.host}/`);
+  const host = u.hostname.startsWith("www.")
+    ? u.hostname.slice(4)
+    : `www.${u.hostname}`;
+  const port = u.port === "" ? "" : `:${u.port}`;
+  out.push(`${u.protocol}//${host}${port}/`);
+  return out;
+}
+
+export async function loadAssets(
+  site: Site,
+  fetcher: Fetcher,
+  max: number,
+): Promise<void> {
+  const origin = site.origin;
+  if (origin === undefined) return;
+  const keys = new Set<string>();
+  for (const p of site.byKey.values()) {
+    for (const img of p.images) if (img.key !== undefined) keys.add(img.key);
+    for (const r of p.resources) {
+      if (r.src === "") continue;
+      const res = resolveHref(r.src, p.key, site.site);
+      if (res.internal && res.key !== undefined) keys.add(res.key);
+    }
+  }
+  // Pages are not assets: only file-like keys (with an extension) are requested.
+  const chosen = [...keys]
+    .filter((k) => !k.endsWith("/") && !site.byKey.has(k))
+    .sort(byString)
+    .slice(0, Math.max(0, max));
+
+  const recs = await Promise.all(
+    chosen.map(async (key) => {
+      const url = fileUrl(origin, key);
+      let rec = await fetcher.get(url, { method: "HEAD" });
+      if (rec.final?.status === 405 || rec.final?.status === 501)
+        rec = await fetcher.get(url, { method: "GET", wantBody: false });
+      return rec;
+    }),
+  );
+  // Stored in sorted key order, whatever the completion order was.
+  chosen.forEach((key, i) => {
+    const rec = recs[i] as FetchRecord;
+    site.responses?.set(fileUrl(origin, key), rec);
+    const f = rec.final;
+    if (rec.stop !== undefined || f === undefined || f.status !== 200) return;
+    const cl = Number.parseInt(f.headers["content-length"] ?? "", 10);
+    const asset: Asset = {
+      key,
+      bytes: Number.isFinite(cl) && cl >= 0 ? cl : f.bytes,
+      ext: /\.([^./]+)$/.exec(key)?.[1]?.toLowerCase() ?? "",
+      headers: f.headers,
+    };
+    site.assets.set(key, asset);
+  });
+}
+
+export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
+  const origin = site.origin;
+  const responses = site.responses;
+  if (origin === undefined || responses === undefined) return;
+
+  const probe = async (url: string): Promise<FetchRecord> => {
+    const rec = await fetcher.get(url, { follow: false });
+    return rec;
+  };
+
+  const urls: string[] = [`${origin}${NOT_FOUND_PROBE}`];
+  urls.push(...formProbeUrls(site.input.root));
+  const slashed = [...site.pages]
+    .sort((a, b) => byString(a.key, b.key))
+    .filter((p) => p.key !== "/")
+    .flatMap((p) => {
+      const path = p.url !== undefined ? new URL(p.url).pathname : p.key;
+      if (/\.[^/.]+\/?$/.test(path)) return [];
+      const other = path.endsWith("/") ? path.replace(/\/+$/, "") : `${path}/`;
+      return other === "" ? [] : [`${origin}${other}`];
+    })
+    .slice(0, MAX_SLASH_PROBES);
+  urls.push(...slashed);
+
+  const recs = await Promise.all(urls.map(probe));
+  urls.forEach((url, i) => {
+    responses.set(url, recs[i] as FetchRecord);
+  });
+
+  const f = recs[0]?.final;
+  const ct = f?.contentType ?? f?.headers["content-type"] ?? "";
+  if (
+    f !== undefined &&
+    f.status === 404 &&
+    f.body?.trim() &&
+    HTML_TYPES.has(ct.split(";")[0]?.trim().toLowerCase() ?? "")
+  ) {
+    const page = parsePage(f.body, pageKey(NOT_FOUND_PROBE));
+    page.status = f.status;
+    page.headers = f.headers;
+    page.url = f.url;
+    for (const l of page.links) {
+      const r = resolveHref(l.href, page.key, site.site);
+      l.internal = r.internal;
+      l.key = r.key;
+    }
+    for (const img of page.images) {
+      const r =
+        img.src === ""
+          ? { internal: false }
+          : resolveHref(img.src, page.key, site.site);
+      img.key = r.internal ? r.key : undefined;
+    }
+    site.notFound = page;
+  }
+}

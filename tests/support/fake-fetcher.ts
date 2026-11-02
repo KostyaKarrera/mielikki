@@ -1,5 +1,5 @@
 import type { Fetched, FetchRecord } from "../../src/model/types.js";
-import type { Fetcher } from "../../src/net/fetch.js";
+import type { Fetcher, GetOptions } from "../../src/net/fetch.js";
 
 export type ScriptEntry =
   | Partial<FetchRecord>
@@ -33,16 +33,26 @@ function fetched(
  */
 export function scriptedFetcher(
   script: Record<string, ScriptEntry>,
-  opts: { delayMs?(url: string): number } = {},
-): Fetcher & { requested: string[] } {
+  opts: {
+    delayMs?(url: string): number;
+    /** Overrides the script per call (e.g. by method); undefined falls back to the script. */
+    respond?(url: string, o: GetOptions): ScriptEntry | undefined;
+  } = {},
+): Fetcher & {
+  requested: string[];
+  calls: { url: string; o: GetOptions }[];
+} {
   const requested: string[] = [];
+  const calls: { url: string; o: GetOptions }[] = [];
   return {
     requested,
-    async get(url) {
+    calls,
+    async get(url, o = {}) {
       requested.push(url);
+      calls.push({ url, o });
       const delay = opts.delayMs?.(url) ?? 0;
       if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-      const entry = script[url];
+      const entry = opts.respond?.(url, o) ?? script[url];
       if (entry === undefined)
         return { requested: url, hops: [], final: fetched(url, "", 404) };
       if ("html" in entry)
