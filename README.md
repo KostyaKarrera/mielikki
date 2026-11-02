@@ -1,8 +1,8 @@
 # Mielikki
 
-Local, offline SEO audit CLI for built static sites. Point it at a build directory (`dist/`), get a list of concrete problems with fixes. Deterministic, no telemetry, no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at.
+Local SEO audit CLI for built static sites. Point it at a build directory (`dist/`) or a running site, get a list of concrete problems with fixes. `check` is deterministic, has no telemetry and no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at; `perf` loads the pages you name in headless Chrome.
 
-> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works; URL mode (`check <url>`) crawls a running site and applies the same rules (HTTP-specific checks are still to come). `perf` (Lighthouse) measures running pages. Not implemented yet, planned in later releases: `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those two commands do not exist yet.
+> **Status: pre-1.0 (0.2.0).** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Not included yet, planned for the next release (plan 3): `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those two commands do not exist yet. JavaScript is never executed: Mielikki audits the HTML the server sends.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
@@ -87,11 +87,34 @@ npx mielikki check http://localhost:4321/          # a dev/preview server
 npx mielikki check https://sahko.example/ --max-pages 50
 ```
 
-`check` with an `http://` or `https://` argument crawls the site instead of reading files: robots.txt, sitemaps, then pages level by level from the start URL, only on that host (URLs on `config.site` are mapped to it), then the referenced assets (`HEAD`). Pages that nothing links to and no sitemap lists are not found, unlike in directory mode. Results do not depend on response timing.
+Use it when you need what only a live server shows: HTTP status codes and redirect chains, http/www/trailing-slash variants, security headers, compression, caching, soft 404s. `check` with an `http://` or `https://` argument crawls the site instead of reading files: robots.txt, sitemaps, then pages level by level from the start URL, only on that host, then the referenced assets (`HEAD`). It applies the same rules as directory mode, plus the `http/*` rules and `links/redirected`. Results do not depend on response timing.
 
-Crawl limits (ignored for a directory): `--max-pages <n>` (200), `--max-assets <n>` (300), `--concurrency <n>` (4 for local hosts, 2 otherwise), `--delay <ms>` between requests (0 local, 100 otherwise), `--timeout <ms>` per request (15000), `--max-bytes <n>` per response (5000000), `--respect-robots` (skip URLs disallowed for `*`). At most 10 redirects are followed. User agent: `Mielikki/<version> (+https://github.com/KostyaKarrera/mielikki)`.
+What the crawl does and does not do:
 
-Only audit sites you own or have permission to audit: for a non-local host other than `config.site`, a warning is printed to stderr. A start URL with credentials, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL (network error, timeout, HTTP 4xx/5xx) are usage errors (exit 2).
+- JavaScript is not executed. Only server-sent HTML is analysed; links, redirects and content added by scripts are invisible (for example a form that redirects to `/kiitos` via JS).
+- Only links found in the HTML and URLs listed in sitemaps are followed. A page that nothing links to and no sitemap lists is not discovered; directory mode finds it because it reads every file.
+- URLs with a query string are not crawled.
+- A start URL that answers with status 400 or above is a usage error (exit 2), as are credentials in the URL, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL.
+
+### Hostname mapping and `config.site`
+
+The origin used for canonicals, sitemaps and hreflang comes only from `site:` in the config; it is never auto-detected from canonicals found on the pages. When the crawl host differs from `config.site` (typically an audit of `http://localhost:4321` with the production `site: https://example.fi`), URLs on the `config.site` host are mapped onto the crawl host: a canonical `https://example.fi/palvelut/` is checked as `http://localhost:4321/palvelut/`. No request is ever made to the `config.site` host.
+
+### Limits and flags (ignored for a directory)
+
+`--max-pages <n>` (200), `--max-assets <n>` (300; the budget also covers og:image, linked files and file entries in sitemaps), `--concurrency <n>` (4 for local hosts, 2 otherwise), `--delay <ms>` between requests (0 local, 100 otherwise), `--timeout <ms>` per request (15000), `--max-bytes <n>` per response (5000000), `--respect-robots`. At most 10 redirects are followed. User agent: `Mielikki/<version> (+https://github.com/KostyaKarrera/mielikki)`.
+
+`--respect-robots` skips URLs that robots.txt disallows for `*`. It is off by default because a site audit should see the pages the owner wants audited, including a pre-launch site with `Disallow: /`; turn it on when you crawl a site you do not run, or want to see what a bot would see.
+
+### Safety
+
+Only audit sites you own or have permission to audit. For a non-local host other than `config.site`, a warning is printed to stderr.
+
+### Known limitations
+
+- An asset that redirects to another host (for example a CDN redirect) is reported as missing, because the crawl stays on one host.
+- The http/www probes (does `http://` redirect to `https://`, does `www.` resolve) only run for non-local hosts.
+- `--max-assets` is a single budget for images, scripts, styles, og:image, linked files and sitemap file entries; on large sites raise it.
 
 ## Performance (`perf`)
 
@@ -102,11 +125,11 @@ npx mielikki perf https://example.fi/ --preset mobile --runs 3
 
 `mielikki perf <url...>` runs Lighthouse (performance category only) in headless Chrome against each URL and reports Core Web Vitals style findings: `perf/lcp`, `perf/cls`, `perf/tbt` (a lab proxy for INP), `perf/fcp`, `perf/opportunity`, a reference-only `perf/score`, and `perf/run-failed` when a URL could not be measured (other URLs keep their results). Thresholds follow web.dev: poor is a warning, needs improvement is info. These rules are listed by `rules` but are never run by `check`.
 
-Lighthouse 13 needs Node 22.19 or newer and Google Chrome (found via `chrome-launcher`, `CHROME_PATH` or `--chrome-path`). Use `--no-sandbox` in containers and CI. If Lighthouse or Chrome is missing, `perf` exits with code 2 and an install hint.
+Requirements: Lighthouse 13 needs Node 22.19 or newer, and Google Chrome (found via `chrome-launcher`, the `CHROME_PATH` environment variable or `--chrome-path`). Use `--no-sandbox` in containers and CI. Lighthouse is found next to Mielikki or, failing that, in the current project's `node_modules`. If Lighthouse or Chrome is missing, `perf` exits with code 2 and an install hint.
 
 Flags: `--preset mobile|desktop` (default mobile), `--runs <n>` (median of n runs, default 1), `--chrome-path`, `--no-sandbox`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info` (default error), `--config <path>`.
 
-Unlike `check`, perf output is a measurement: it is not deterministic and differs between runs and machines. Use `--runs 3` or more for steadier numbers.
+The numbers are lab metrics from a simulated device and network, not field data from real visitors (that is what Search Console and CrUX report). Unlike `check`, perf output is a measurement: it is not deterministic and differs between runs and machines. Use `--runs 3` or more for steadier medians.
 
 ## Exit codes
 

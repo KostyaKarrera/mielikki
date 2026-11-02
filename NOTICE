@@ -9,3 +9,11 @@ Rules derived from
 Bundled data
 ------------
 - schema.org vocabulary (CC BY-SA 3.0), https://schema.org
+
+Optional dependencies (not bundled)
+-----------------------------------
+`mielikki perf` can use the following packages if the user installs them
+as optional peer dependencies. They are not included in this package and are
+not required for any other command.
+- Lighthouse by the Lighthouse Authors / Google (Apache License 2.0)
+- chrome-launcher by Google (Apache License 2.0)
