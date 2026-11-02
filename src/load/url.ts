@@ -198,6 +198,12 @@ export async function loadUrl(
         const u = toCrawl(loc, crawlOrigin);
         if (u !== undefined) level.push(u);
       }
+  // Configured target pages are seeded like sitemap URLs: a real page that
+  // nothing links to is then found (crawl/orphan), not reported as missing.
+  for (const t of config.targets.pages) {
+    const u = toCrawl(t.url, crawlOrigin);
+    if (u !== undefined) level.push(u);
+  }
 
   while (level.length > 0) {
     const toFetch: string[] = [];
@@ -227,6 +233,10 @@ export async function loadUrl(
       }
       toFetch.push(url);
     }
+
+    // The start URL always goes first, so the page limit never cuts it.
+    const startAt = toFetch.indexOf(startUrlNorm);
+    if (startAt > 0) toFetch.unshift(...toFetch.splice(startAt, 1));
 
     const next: string[] = [];
     let i = 0;

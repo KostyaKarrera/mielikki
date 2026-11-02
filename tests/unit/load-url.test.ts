@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { parseConfig } from "../../src/config/schema.js";
 import { UsageError } from "../../src/errors.js";
 import { type CrawlOptions, loadUrl } from "../../src/load/url.js";
+import { rule as orphan } from "../../src/rules/crawl/orphan.js";
+import { rule as pageMissing } from "../../src/rules/targets/page-missing.js";
+import { runRule } from "../helpers.js";
 import { type ScriptEntry, scriptedFetcher } from "../support/fake-fetcher.js";
 
 const O = "http://127.0.0.1:5";
@@ -421,5 +424,62 @@ describe("loadUrl: sitemaps on another host", () => {
     );
     const sm = site.sitemaps.find((s) => s.file.includes("cdn.example"));
     expect(sm?.error).toBe("listed on another host, not fetched");
+  });
+});
+
+describe("loadUrl: configured targets are seeded into the crawl", () => {
+  const target = (url: string) => ({
+    targets: { pages: [{ url, primary: "x" }] },
+  });
+  const script = {
+    [`${O}/`]: html("<main>home</main>"),
+    [`${O}/palvelut/`]: html("<main>palvelut</main>"),
+  };
+
+  it("an unlinked, un-sitemapped target answering 200 is an orphan, not missing", async () => {
+    const { site } = await crawl(script, target("/palvelut/"));
+    expect(await runRule(pageMissing, site)).toEqual([]);
+    expect((await runRule(orphan, site)).map((f) => f.url)).toEqual([
+      "/palvelut/",
+    ]);
+  });
+
+  it("a target answering 404 is still missing", async () => {
+    const { site } = await crawl(script, target("/puuttuu/"));
+    expect((await runRule(pageMissing, site)).map((f) => f.url)).toEqual([
+      "/puuttuu/",
+    ]);
+  });
+
+  it("an absolute site-host target is mapped to the crawl host", async () => {
+    const { site, fetcher } = await crawl(script, {
+      site: "https://example.fi",
+      ...target("https://example.fi/palvelut/"),
+    });
+    expect(await runRule(pageMissing, site)).toEqual([]);
+    expect(fetcher.requested).toContain(`${O}/palvelut/`);
+    for (const u of fetcher.requested) expect(new URL(u).origin).toBe(O);
+  });
+
+  it("a target on a foreign host is never requested", async () => {
+    const { fetcher } = await crawl(script, target("https://elsewhere.fi/x/"));
+    for (const u of fetcher.requested) expect(new URL(u).origin).toBe(O);
+  });
+
+  it("--max-pages 1 still requests the start URL when a smaller URL is seeded", async () => {
+    const { site, fetcher } = await crawl(
+      {
+        ...script,
+        [`${O}/sitemap.xml`]: xml(urlset(`${O}/aaa/`)),
+        [`${O}/aaa/`]: html("<main>a</main>"),
+        [`${O}/start/`]: html("<main>s</main>"),
+      },
+      target("/palvelut/"),
+      { maxPages: 1 },
+      `${O}/start/`,
+    );
+    expect(fetcher.requested).toContain(`${O}/start/`);
+    expect(site.byKey.has("/start/")).toBe(true);
+    expect(fetcher.requested).not.toContain(`${O}/aaa/`);
   });
 });

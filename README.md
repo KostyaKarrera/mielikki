@@ -92,7 +92,7 @@ Use it when you need what only a live server shows: HTTP status codes and redire
 What the crawl does and does not do:
 
 - JavaScript is not executed. Only server-sent HTML is analysed; links, redirects and content added by scripts are invisible (for example a form that redirects to `/kiitos` via JS).
-- Only links found in the HTML and URLs listed in sitemaps are followed. A page that nothing links to and no sitemap lists is not discovered; directory mode finds it because it reads every file.
+- Only links found in the HTML and URLs listed in sitemaps are followed. Configured `targets.pages` URLs are also requested. Any other page that nothing links to and no sitemap lists is not discovered; directory mode finds it because it reads every file.
 - URLs with a query string are not crawled; the start URL is the exception (it is requested as given, and the report root drops the query).
 - A link, image or target page is reported as broken or missing only when it was requested and answered with status 400 or above or did not answer (timeout, network error, too large). A URL that redirects is not broken (`links/redirected` and `http/redirect-chain` report redirects). A link or image URL that was never requested (beyond `--max-pages` or `--max-assets`, a query URL, skipped by `--respect-robots`) is not reported. A target page that was not found is reported unless the crawl was cut by `--max-pages` or skipped its URL; `http/crawl-limit` says when the page limit cut the crawl.
 - A start URL that answers with status 400 or above is a usage error (exit 2), as are credentials in the URL, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL.
