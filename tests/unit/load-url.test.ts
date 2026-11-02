@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "../../src/config/schema.js";
+import { UsageError } from "../../src/errors.js";
 import { type CrawlOptions, loadUrl } from "../../src/load/url.js";
 import { type ScriptEntry, scriptedFetcher } from "../support/fake-fetcher.js";
 
@@ -83,6 +84,47 @@ describe("loadUrl", () => {
     expect(site.responses?.has(`${O}/a`)).toBe(true);
     expect(site.responses?.has(`${O}/a/`)).toBe(true);
     expect(site.responses?.get(`${O}/a`)?.hops).toHaveLength(1);
+  });
+
+  it("(b1) a start URL redirecting to another origin is a usage error", async () => {
+    const H = "https://127.0.0.1:5";
+    const p = crawl({
+      [`${O}/`]: {
+        hops: [{ url: `${O}/`, status: 301, location: `${H}/` }],
+        final: {
+          url: `${H}/`,
+          status: 200,
+          headers: { "content-type": "text/html" },
+          contentType: "text/html",
+          bytes: 1,
+          body: '<a href="/a/">a</a>',
+        },
+      },
+    });
+    await expect(p).rejects.toThrow(UsageError);
+    await expect(p).rejects.toThrow(
+      `Start URL redirects to ${H}; check that URL instead`,
+    );
+  });
+
+  it("(b1) a page redirecting to another origin is not a crawled page", async () => {
+    const H = "https://127.0.0.1:5";
+    const { site, fetcher } = await crawl({
+      [`${O}/`]: html('<a href="/a/">a</a>'),
+      [`${O}/a/`]: {
+        hops: [{ url: `${O}/a/`, status: 301, location: `${H}/a/` }],
+        final: {
+          url: `${H}/a/`,
+          status: 200,
+          headers: { "content-type": "text/html" },
+          contentType: "text/html",
+          bytes: 1,
+          body: '<a href="/b/">b</a>',
+        },
+      },
+    });
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(fetcher.requested).not.toContain(`${O}/b/`);
   });
 
   it("(b2) a redirect target is not requested again on a later level", async () => {

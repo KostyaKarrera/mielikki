@@ -1,4 +1,5 @@
 import type { Config } from "../config/schema.js";
+import { UsageError } from "../errors.js";
 import { isIgnored } from "../model/indexable.js";
 import type { FetchRecord, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
@@ -167,6 +168,27 @@ export async function loadUrl(
   let limitReached = false;
   const pages = new Map<string, Page>();
 
+  // A start URL that ends up on another origin (http -> https, apex -> www,
+  // another port) would make every link look off-host: refuse, naming the target.
+  const checkStartOrigin = (rec: FetchRecord): void => {
+    const last = rec.hops.at(-1);
+    let final: string | undefined = rec.final?.url;
+    if (final === undefined && rec.stop === "left-site" && last?.location)
+      final = URL.canParse(last.location, last.url)
+        ? mapToCrawl(
+            new URL(last.location, last.url).href,
+            crawlOrigin,
+            siteOrigin,
+          )
+        : undefined;
+    if (final === undefined || !URL.canParse(final)) return;
+    const origin = new URL(final).origin;
+    if (origin !== crawlOrigin)
+      throw new UsageError(
+        `Start URL redirects to ${origin}; check that URL instead`,
+      );
+  };
+
   const startUrlNorm = normalizeCrawlUrl(start.href).url;
   let level: string[] = [startUrlNorm];
   for (const sm of sitemaps)
@@ -217,8 +239,12 @@ export async function loadUrl(
       // Results are handled in sorted order, so Site does not depend on timing.
       batch.forEach((url, n) => {
         const rec = recs[n] as FetchRecord;
+        if (url === startUrlNorm) checkStartOrigin(rec);
         responses.set(url, rec);
         if (rec.final === undefined) return;
+        // A page that redirected off the crawl origin (e.g. to https://) is a
+        // redirect (links/redirected), not a crawled page.
+        if (new URL(rec.final.url).origin !== crawlOrigin) return;
         seen.add(normalizeCrawlUrl(rec.final.url).url);
         const page = pageFrom(rec);
         if (page === undefined || pages.has(page.key)) return;

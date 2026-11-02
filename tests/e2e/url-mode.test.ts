@@ -389,3 +389,50 @@ describe("check <url>: broken is decided from what was requested", () => {
     expect(broken[0]).toContain("/images/puuttuu.jpg");
   });
 });
+
+describe("check <url>: start URL redirecting to another origin", () => {
+  it("another port/scheme on the same hostname is a usage error naming the final origin", async () => {
+    const dir = await copyFixture("good");
+    const b = await serve(path.join(dir, "dist"));
+    const a = await serve(path.join(dir, "dist"), {
+      redirects: { "/": { status: 301, location: `${b.url}/` } },
+    });
+    const p = check(`${a.url}/`, dir);
+    await expect(p).rejects.toThrow(UsageError);
+    await expect(p).rejects.toThrow(
+      `Start URL redirects to ${b.url}; check that URL instead`,
+    );
+  });
+
+  it("another hostname is a usage error naming the final origin", async () => {
+    const dir = await copyFixture("good");
+    const b = await serve(path.join(dir, "dist"));
+    const other = b.url.replace("127.0.0.1", "localhost");
+    const a = await serve(path.join(dir, "dist"), {
+      redirects: { "/": { status: 301, location: `${other}/` } },
+    });
+    await expect(check(`${a.url}/`, dir)).rejects.toThrow(
+      `Start URL redirects to ${other}; check that URL instead`,
+    );
+  });
+
+  it("CLI: exit 2 with the hint", async () => {
+    const dir = await copyFixture("good");
+    const b = await serve(path.join(dir, "dist"));
+    const a = await serve(path.join(dir, "dist"), {
+      redirects: { "/": { status: 301, location: `${b.url}/` } },
+    });
+    const { spawn } = await import("node:child_process");
+    const child = spawn("node", [CLI, "check", `${a.url}/`], { cwd: dir });
+    let err = "";
+    child.stderr.on("data", (d: Buffer) => {
+      err += d.toString();
+    });
+    const code = await new Promise<number | null>((resolve) =>
+      child.on("close", resolve),
+    );
+    expect(code).toBe(2);
+    expect(err).toContain(`Start URL redirects to ${b.url}`);
+    expect(err).not.toMatch(/\n\s+at /);
+  });
+});

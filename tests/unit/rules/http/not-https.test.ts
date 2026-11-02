@@ -12,8 +12,8 @@ describe("http/not-https", () => {
     expect(await runRule(rule, s)).toHaveLength(1);
     expect((await runRule(rule, s, "launch"))[0]?.severity).toBe("error");
   });
-  it("fires when https redirects down to http", async () => {
-    const s = await load(
+  it("https redirecting down to http stops with a hint to check the http URL", async () => {
+    const s = load(
       {
         "https://example.fi/": {
           hops: [
@@ -35,7 +35,11 @@ describe("http/not-https", () => {
       {},
       "https://example.fi/",
     );
-    expect(await runRule(rule, s)).toHaveLength(1);
+    // Start URL on another origin is a usage error (exit 2); checking
+    // http://example.fi/ then gives http/not-https (first test).
+    await expect(s).rejects.toThrow(
+      "Start URL redirects to http://example.fi; check that URL instead",
+    );
   });
   it("is silent on https and on localhost http", async () => {
     const a = await load(

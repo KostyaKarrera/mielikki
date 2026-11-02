@@ -37,8 +37,8 @@ describe("http/host-variant", () => {
 });
 
 describe("http/host-variant (apex -> www start redirect)", () => {
-  it("is silent when the start redirects to www and the www probe answers 200", async () => {
-    const s = await load(
+  it("a start redirecting to www stops with a hint to check the www URL", async () => {
+    const s = load(
       {
         [S]: {
           hops: [{ url: S, status: 301, location: W }],
@@ -55,6 +55,8 @@ describe("http/host-variant (apex -> www start redirect)", () => {
       {},
       S,
     );
-    expect(await runRule(rule, s, "launch")).toEqual([]);
+    await expect(s).rejects.toThrow(
+      `Start URL redirects to ${new URL(W).origin}; check that URL instead`,
+    );
   });
 });
