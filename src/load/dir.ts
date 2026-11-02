@@ -6,17 +6,17 @@ import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
 import { parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
-import { parseSitemap, type SitemapInfo } from "../parse/sitemap.js";
-import { buildSiteGraph, dedupeByKey, detectSite } from "./graph.js";
+import {
+  buildSiteGraph,
+  collectSitemaps,
+  DEFAULT_SITEMAPS,
+  dedupeByKey,
+  detectSite,
+} from "./graph.js";
 
 const HTML = /\.html?$/i;
 /** The not-found page: /404.html, or /404/index.html of directory-style builds. */
 const NOT_FOUND = /^404(\/index)?\.html?$/i;
-const DEFAULT_SITEMAPS = [
-  "/sitemap.xml",
-  "/sitemap-index.xml",
-  "/sitemap_index.xml",
-];
 
 /** URL path of a file: encoded so that literal '%', '?' and '#' in names survive pageKey. */
 function fileUrlPath(rel: string): string {
@@ -54,44 +54,6 @@ async function readText(
   }
 }
 
-async function loadSitemaps(
-  root: string,
-  listed: string[],
-): Promise<SitemapInfo[]> {
-  const out: SitemapInfo[] = [];
-  const seen = new Set<string>();
-  const visit = async (urlPath: string, mustExist: boolean): Promise<void> => {
-    if (seen.has(urlPath)) return;
-    seen.add(urlPath);
-    const xml = await readText(root, urlPath);
-    if (xml === undefined) {
-      if (mustExist)
-        out.push({
-          file: urlPath,
-          ok: false,
-          error: "file not found in input directory",
-          urls: [],
-          isIndex: false,
-        });
-      return;
-    }
-    const info = parseSitemap(xml, urlPath);
-    out.push(info);
-    if (info.ok && info.isIndex)
-      for (const loc of info.urls) {
-        if (!URL.canParse(loc)) continue;
-        await visit(new URL(loc).pathname, true);
-      }
-  };
-  if (listed.length > 0) {
-    for (const u of listed)
-      if (URL.canParse(u)) await visit(new URL(u).pathname, true);
-  } else {
-    for (const p of DEFAULT_SITEMAPS) await visit(p, false);
-  }
-  return out;
-}
-
 export async function loadDir(dir: string, config: Config): Promise<Site> {
   const root = path.resolve(dir);
   const files = await walk(root);
@@ -127,7 +89,14 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
   const robotsRaw = await readText(root, "/robots.txt");
   const robots =
     robotsRaw === undefined ? undefined : parseRobots(robotsRaw, siteUrl);
-  const sitemaps = await loadSitemaps(root, robots?.sitemaps ?? []);
+  const sitemaps = await collectSitemaps({
+    listed: robots?.sitemaps ?? [],
+    defaults: DEFAULT_SITEMAPS,
+    locate: (loc) => (URL.canParse(loc) ? new URL(loc).pathname : undefined),
+    read: async (urlPath, mustExist) =>
+      (await readText(root, urlPath)) ??
+      (mustExist ? { error: "file not found in input directory" } : undefined),
+  });
 
   return {
     input: { kind: "dir", root },

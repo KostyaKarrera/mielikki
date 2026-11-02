@@ -1,6 +1,63 @@
 import type { Config } from "../config/schema.js";
 import type { Page } from "../model/types.js";
 import { resolveHref } from "../model/url.js";
+import { parseSitemap, type SitemapInfo } from "../parse/sitemap.js";
+
+export const DEFAULT_SITEMAPS = [
+  "/sitemap.xml",
+  "/sitemap-index.xml",
+  "/sitemap_index.xml",
+];
+
+/** XML text, a failure to report, or undefined when an optional sitemap is silently absent. */
+export type SitemapRead = string | { error: string } | undefined;
+
+/**
+ * Source-independent sitemap walk: `listed` (from robots.txt) or else `defaults`,
+ * expanding indexes depth-first. `locate` turns a <loc>/Sitemap URL into the id
+ * passed to `read` (and used as SitemapInfo.file); undefined skips it.
+ */
+export async function collectSitemaps(o: {
+  listed: string[];
+  defaults: string[];
+  locate(loc: string): string | undefined;
+  read(id: string, mustExist: boolean): Promise<SitemapRead>;
+}): Promise<SitemapInfo[]> {
+  const out: SitemapInfo[] = [];
+  const seen = new Set<string>();
+  const visit = async (id: string, mustExist: boolean): Promise<void> => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    const got = await o.read(id, mustExist);
+    if (got === undefined) return;
+    if (typeof got !== "string") {
+      out.push({
+        file: id,
+        ok: false,
+        error: got.error,
+        urls: [],
+        isIndex: false,
+      });
+      return;
+    }
+    const info = parseSitemap(got, id);
+    out.push(info);
+    if (info.ok && info.isIndex)
+      for (const loc of info.urls) {
+        const child = o.locate(loc);
+        if (child !== undefined) await visit(child, true);
+      }
+  };
+  if (o.listed.length > 0) {
+    for (const u of o.listed) {
+      const id = o.locate(u);
+      if (id !== undefined) await visit(id, true);
+    }
+  } else {
+    for (const id of o.defaults) await visit(id, false);
+  }
+  return out;
+}
 
 export function detectSite(pages: Page[]): string | undefined {
   const counts = new Map<string, number>();
