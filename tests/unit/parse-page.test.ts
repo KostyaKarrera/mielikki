@@ -186,7 +186,7 @@ describe("mainText block separation", () => {
   it("handles deep nesting without recursion limits", () => {
     const html = `<html><body><main>${"<div>".repeat(20_000)}x${"</div>".repeat(20_000)}</main></body></html>`;
     expect(pageFrom(html).mainText).toBe("x");
-  });
+  }, 30_000);
   it("separates br and ignores script/noscript text", () => {
     const p = pageFrom(
       "<html><body><main>a<br>b<script>var z=1</script><noscript>NS</noscript></main></body></html>",

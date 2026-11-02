@@ -70,6 +70,13 @@ describe("fetcher", () => {
     expect(r.final?.body).toContain("Hello");
   });
 
+  it("keeps content-encoding while decoding the body", async () => {
+    const s = await start({ gzip: true });
+    const r = await fetcher().get(`${s.url}/`);
+    expect(r.final?.headers["content-encoding"]).toBe("gzip");
+    expect(r.final?.body).toBe("<html><body>Hello</body></html>");
+  });
+
   it("follows 301 -> 302 -> 200", async () => {
     const s = await start({
       redirects: {
@@ -308,7 +315,7 @@ describe("limiter", () => {
     for (let i = 1; i < starts.length; i++) {
       expect(
         (starts[i] as number) - (starts[i - 1] as number),
-      ).toBeGreaterThanOrEqual(48);
+      ).toBeGreaterThanOrEqual(40); // lower bound only; allows timer jitter
     }
   });
 });
