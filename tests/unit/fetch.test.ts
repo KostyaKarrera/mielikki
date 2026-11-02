@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFetcher, type FetcherOptions } from "../../src/net/fetch.js";
 import { createLimiter } from "../../src/net/limiter.js";
 import {
@@ -113,9 +113,22 @@ describe("fetcher", () => {
     expect(r.stop).toBe("too-many-redirects");
   });
 
-  it.each(["http://169.254.169.254/latest/", "https://evil.example/"])(
-    "does not follow redirect to %s",
-    async (target) => {
+  it("does not contact a literal metadata-IP redirect target", async () => {
+    const target = "http://169.254.169.254/latest/";
+    const s = await start({
+      redirects: { "/out": { status: 302, location: target } },
+    });
+    const r = await fetcher().get(`${s.url}/out`);
+    expect(r.stop).toBe("left-site");
+    expect(r.final).toBeUndefined();
+    expect(r.hops).toHaveLength(1);
+    expect(r.hops[0]?.location).toBe(target);
+  });
+
+  it("does not contact a forbidden host (second server proves it)", async () => {
+    const other = await serveDir(dir);
+    try {
+      const target = `http://localhost:${new URL(other.url).port}/`;
       const s = await start({
         redirects: { "/out": { status: 302, location: target } },
       });
@@ -123,21 +136,85 @@ describe("fetcher", () => {
       expect(r.stop).toBe("left-site");
       expect(r.final).toBeUndefined();
       expect(r.hops).toHaveLength(1);
-      expect(r.hops[0]?.location).toBe(target);
-      expect(s.requests).toEqual(["/out"]);
-    },
-  );
+      expect(other.requests).toEqual([]);
+    } finally {
+      await other.close();
+    }
+  });
+
+  it("allows exactly maxHops redirects but not maxHops+1", async () => {
+    const redirects: Behaviors["redirects"] = {};
+    for (let i = 0; i < 10; i++) {
+      redirects[`/h${i}`] = {
+        status: 302,
+        location: i === 9 ? "/a/" : `/h${i + 1}`,
+      };
+    }
+    redirects["/g0"] = { status: 302, location: "/h0" };
+    const s = await start({ redirects });
+    const ok = await fetcher({ maxHops: 10 }).get(`${s.url}/h0`);
+    expect(ok.hops).toHaveLength(10);
+    expect(ok.final?.status).toBe(200);
+    const bad = await fetcher({ maxHops: 10 }).get(`${s.url}/g0`);
+    expect(bad.stop).toBe("too-many-redirects");
+    expect(bad.final).toBeUndefined();
+  });
+
+  it("endless body gives too-large, no final, and the connection is closed", async () => {
+    const s = await start({
+      extra: { "/inf": { type: "text/html", body: "", stream: "endless" } },
+    });
+    const t0 = Date.now();
+    const r = await fetcher({ maxBytes: 100_000 }).get(`${s.url}/inf`);
+    expect(r.stop).toBe("too-large");
+    expect(r.final).toBeUndefined();
+    expect(Date.now() - t0).toBeLessThan(1500);
+    await vi.waitFor(() => expect(s.aborted).toContain("/inf"));
+  });
+
+  it("stalled body gives timeout with no final", async () => {
+    const s = await start({
+      extra: { "/stall": { type: "text/html", body: "", stream: "stall" } },
+    });
+    const r = await fetcher({ timeoutMs: 200 }).get(`${s.url}/stall`);
+    expect(r.stop).toBe("timeout");
+    expect(r.detail).toBe("exceeded 200 ms");
+    expect(r.final).toBeUndefined();
+  });
+
+  it("connection dropped mid-body gives network with no final", async () => {
+    const srv = net.createServer((sock) => {
+      sock.on("error", () => {});
+      sock.once("data", () => {
+        sock.write(
+          "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: 1000\r\n\r\n<html>",
+        );
+        setTimeout(() => sock.destroy(), 20);
+      });
+    });
+    await new Promise<void>((res) => srv.listen(0, "127.0.0.1", res));
+    try {
+      const port = (srv.address() as net.AddressInfo).port;
+      const r = await fetcher().get(`http://127.0.0.1:${port}/`);
+      expect(r.stop).toBe("network");
+      expect(r.final).toBeUndefined();
+    } finally {
+      await new Promise<void>((res) => srv.close(() => res()));
+    }
+  });
 
   it("returns too-large when body exceeds maxBytes", async () => {
     const s = await start();
     const r = await fetcher({ maxBytes: 1000 }).get(`${s.url}/big.html`);
     expect(r.stop).toBe("too-large");
+    expect(r.final).toBeUndefined();
   });
 
   it("times out on a slow server", async () => {
     const s = await start({ delayMs: { "/": 1500 } });
     const r = await fetcher({ timeoutMs: 100 }).get(`${s.url}/`);
     expect(r.stop).toBe("timeout");
+    expect(r.detail).toBe("exceeded 100 ms");
   });
 
   it("reports network errors for a closed port", async () => {
@@ -185,17 +262,18 @@ describe("fetcher", () => {
     expect((await fetcher().get(`${s.url}/s.xml`)).final?.body).toBe("<a/>");
   });
 
-  it("applies mapUrl to the Location host", async () => {
+  it("applies mapUrl to the request URL and Location before the host check", async () => {
     const s = await start({
       redirects: { "/m": { status: 302, location: "http://site.invalid/a/" } },
     });
     const r = await fetcher({
-      allowRedirectHost: () => true,
       mapUrl: (u) => u.replace("http://site.invalid", s.url),
-    }).get(`${s.url}/m`);
+    }).get("http://site.invalid/m");
+    expect(r.requested).toBe("http://site.invalid/m");
     expect(r.stop).toBeUndefined();
     expect(r.final?.status).toBe(200);
     expect(r.final?.url).toBe(`${s.url}/a/`);
+    expect(s.requests).toEqual(["/m", "/a/"]);
   });
 });
 

@@ -58,6 +58,7 @@ export type StopReason =
   | "too-large"
   | "network";
 
+/** Invariant: if `stop` is set, `final` is unset. */
 export interface FetchRecord {
   requested: string;
   hops: Hop[];

@@ -137,7 +137,7 @@ export function createFetcher(o: FetcherOptions): Fetcher {
             rec.detail = `already visited ${next}`;
             return rec;
           }
-          if (rec.hops.length >= o.maxHops) {
+          if (rec.hops.length > o.maxHops) {
             rec.stop = "too-many-redirects";
             rec.detail = `more than ${o.maxHops} redirects`;
             return rec;
@@ -155,7 +155,6 @@ export function createFetcher(o: FetcherOptions): Fetcher {
           bytes: Number.isFinite(declared) ? declared : 0,
         };
         if (contentType) fetched.contentType = contentType;
-        rec.final = fetched;
 
         if (wantBody && isTextType(contentType)) {
           const { text, bytes } = await readBody(res);
@@ -164,15 +163,18 @@ export function createFetcher(o: FetcherOptions): Fetcher {
         } else {
           await res.body?.cancel().catch(() => {});
         }
+        rec.final = fetched;
         return rec;
       }
     } catch (err) {
+      // invariant: stop set => final unset
+      delete rec.final;
       if (err instanceof Stop) {
         rec.stop = err.reason;
         rec.detail = err.info ?? err.reason;
       } else if (isTimeout(err, signal)) {
         rec.stop = "timeout";
-        rec.detail = `no response within ${o.timeoutMs} ms`;
+        rec.detail = `exceeded ${o.timeoutMs} ms`;
       } else {
         rec.stop = "network";
         rec.detail = describe(err);

@@ -11,13 +11,18 @@ export interface Behaviors {
   status?: Record<string, number>;
   delayMs?: Record<string, number>;
   gzip?: boolean;
-  extra?: Record<string, { type: string; body: string | Buffer }>;
+  extra?: Record<
+    string,
+    { type: string; body: string | Buffer; stream?: "endless" | "stall" }
+  >;
 }
 
 export interface TestServer {
   url: string;
   close(): Promise<void>;
   requests: string[];
+  /** Paths whose response was cut off before completion (client hung up). */
+  aborted: string[];
 }
 
 const TYPES: Record<string, string> = {
@@ -44,6 +49,7 @@ export async function serveDir(
 ): Promise<TestServer> {
   const root = path.resolve(dir);
   const requests: string[] = [];
+  const aborted: string[] = [];
   const timers = new Set<NodeJS.Timeout>();
 
   const handle = async (
@@ -52,6 +58,10 @@ export async function serveDir(
   ): Promise<void> => {
     const pathname = new URL(req.url ?? "/", "http://x").pathname;
     requests.push(pathname);
+
+    res.on("close", () => {
+      if (!res.writableFinished) aborted.push(pathname);
+    });
 
     const delay = b.delayMs?.[pathname];
     if (delay) {
@@ -72,6 +82,20 @@ export async function serveDir(
 
     const redirect = b.redirects?.[pathname];
     const extra = b.extra?.[pathname];
+    if (extra?.stream) {
+      res.writeHead(status, { "content-type": extra.type });
+      res.write("<html>");
+      if (extra.stream === "endless") {
+        const chunk = Buffer.alloc(16384, 120);
+        const pump = (): void => {
+          if (res.destroyed) return;
+          if (res.write(chunk)) setImmediate(pump);
+          else res.once("drain", pump);
+        };
+        pump();
+      }
+      return;
+    }
     if (redirect) {
       status = redirect.status;
       extraHeaders.location = redirect.location;
@@ -131,6 +155,7 @@ export async function serveDir(
   return {
     url: `http://127.0.0.1:${port}`,
     requests,
+    aborted,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);
