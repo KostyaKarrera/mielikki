@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { rule } from "../../../../src/rules/http/slash-variants.js";
-import { html, load, O, probe, runRule } from "./_util.js";
+import { html, load, O, probe, redirect, runRule } from "./_util.js";
 
 const base = { [`${O}/`]: html('<a href="/a/">a</a><a href="/b">b</a>') };
 describe("http/slash-variants", () => {
@@ -39,5 +39,24 @@ describe("http/slash-variants", () => {
     });
     expect(rule.meta.launchBlocking).toBe(false);
     expect((await runRule(rule, s, "launch"))[0]?.severity).toBe("warning");
+  });
+});
+
+describe("http/slash-variants (crawled opposite forms)", () => {
+  it("crawl-followed /a -> /a/ redirect is silent", async () => {
+    const s = await load({
+      [`${O}/`]: html('<a href="/a">a</a><a href="/a/">a</a>'),
+      [`${O}/a`]: redirect(`${O}/a`, 301, `${O}/a/`),
+      [`${O}/a/`]: html("a"),
+    });
+    expect(await runRule(rule, s)).toEqual([]);
+  });
+  it("both crawled forms genuinely 200 fires", async () => {
+    const s = await load({
+      [`${O}/`]: html('<a href="/a">a</a><a href="/a/">a</a>'),
+      [`${O}/a`]: html("a1"),
+      [`${O}/a/`]: html("a2"),
+    });
+    expect((await runRule(rule, s)).length).toBeGreaterThan(0);
   });
 });

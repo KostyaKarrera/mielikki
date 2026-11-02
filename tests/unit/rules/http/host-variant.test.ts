@@ -11,11 +11,7 @@ const run = async (
 ) =>
   runRule(
     rule,
-    await load(
-      { [start]: html("x"), [W]: p, "https://example.fi/": p },
-      {},
-      start,
-    ),
+    await load({ [start]: html("x"), [start === S ? W : S]: p }, {}, start),
     profile,
   );
 
@@ -37,5 +33,28 @@ describe("http/host-variant", () => {
     expect((await run(probe(W, 200), "launch"))[0]?.severity).toBe("error");
     const f = await run(probe("https://example.fi/", 200), "dev", W);
     expect(f[0]?.url).toBe("https://example.fi/");
+  });
+});
+
+describe("http/host-variant (apex -> www start redirect)", () => {
+  it("is silent when the start redirects to www and the www probe answers 200", async () => {
+    const s = await load(
+      {
+        [S]: {
+          hops: [{ url: S, status: 301, location: W }],
+          final: {
+            url: W,
+            status: 200,
+            headers: { "content-type": "text/html" },
+            bytes: 1,
+            body: "<h1>x</h1>",
+          },
+        },
+        [W]: probe(W, 200),
+      },
+      {},
+      S,
+    );
+    expect(await runRule(rule, s, "launch")).toEqual([]);
   });
 });

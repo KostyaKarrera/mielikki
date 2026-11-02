@@ -17,9 +17,18 @@ export const rule: SiteRule = {
   checkSite(ctx) {
     const { site } = ctx;
     if (!URL.canParse(site.input.root)) return;
-    const mainHost = new URL(site.input.root).hostname;
+    // The main host is where the start URL ends up (it may redirect apex -> www).
+    const startRec = site.responses?.get(new URL(site.input.root.trim()).href);
+    const finalUrl = startRec?.final?.url;
+    const mainHost = new URL(
+      finalUrl !== undefined && URL.canParse(finalUrl)
+        ? finalUrl
+        : site.input.root,
+    ).hostname;
     const probe = formProbeUrls(site.input.root).find(
-      (u) => new URL(u).hostname !== mainHost,
+      (u) =>
+        new URL(u).protocol === new URL(site.input.root).protocol &&
+        new URL(u).hostname !== mainHost,
     );
     if (probe === undefined) return;
     const rec = site.responses?.get(probe);

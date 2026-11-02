@@ -11,7 +11,7 @@ export function internalRecords(site: Site): [string, FetchRecord][] {
     .sort(([a], [b]) => byString(a, b));
 }
 
-/** Redirects in a record (the chain length before the final answer). */
+/** True for a 3xx status code. */
 export function isRedirectStatus(status: number): boolean {
   return status >= 300 && status < 400;
 }

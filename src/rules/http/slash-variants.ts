@@ -25,7 +25,8 @@ export const rule: SiteRule = {
       const other = slashVariant(path);
       if (other === undefined) continue;
       const rec = site.responses.get(`${origin}${other}`);
-      if (rec?.final?.status !== 200) continue;
+      // A redirected request (e.g. a crawled link) is not a duplicate.
+      if (rec?.final?.status !== 200 || rec.hops.length > 0) continue;
       ctx.report({
         url: p.url ?? `${origin}${path}`,
         message: `Both ${path} and ${other} answer 200 (duplicate content)`,
