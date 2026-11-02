@@ -3,6 +3,7 @@ import { aiRules } from "./ai/index.js";
 import { contentRules } from "./content/index.js";
 import { coreRules } from "./core/index.js";
 import { crawlRules } from "./crawl/index.js";
+import { httpRules } from "./http/index.js";
 import { i18nRules } from "./i18n/index.js";
 import { imagesRules } from "./images/index.js";
 import { legalRules } from "./legal/index.js";
@@ -20,6 +21,7 @@ export const allRules: Rule[] = [
   ...coreRules,
   ...contentRules,
   ...crawlRules,
+  ...httpRules,
   ...i18nRules,
   ...imagesRules,
   ...legalRules,

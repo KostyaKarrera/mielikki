@@ -36,11 +36,11 @@ const one = (html: string) => ({ "index.html": html });
 const kb = (n: number) => Buffer.alloc(n * 1024);
 
 describe("registry", () => {
-  it("registers the 17 links/images/social/i18n rules, sorted", () => {
+  it("registers the 18 links/images/social/i18n rules, sorted", () => {
     const ids = allRules
       .map((r) => r.meta.id)
       .filter((i) => /^(links|images|social|i18n)\//.test(i));
-    expect(ids).toHaveLength(17);
+    expect(ids).toHaveLength(18);
     expect([...allRules.map((r) => r.meta.id)]).toEqual(
       allRules.map((r) => r.meta.id).sort(),
     );

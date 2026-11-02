@@ -41,6 +41,16 @@
 | crawl/sitemap-missing | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview |
 | crawl/sitemap-missing-page | warning | no | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview |
 | crawl/thin-html | warning | no | crawl/page | https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics |
+| http/canonical-redirects | warning | yes | http/page | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/crawl-limit | info | no | http/site | squirrelscan:crawl/limit |
+| http/host-variant | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/https-redirect | warning | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/https |
+| http/not-https | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/https |
+| http/redirect-chain | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes |
+| http/redirect-temporary | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/301-redirects |
+| http/robots-status | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt |
+| http/slash-variants | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/unreachable | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/http-network-errors |
 | i18n/hreflang | warning | no | i18n/page | https://developers.google.com/search/docs/specialty/international/localized-versions |
 | images/alt-missing | warning | no | images/page | https://developers.google.com/search/docs/appearance/google-images |
 | images/broken | error | yes | images/page | squirrelscan:images/broken-images |
@@ -55,6 +65,7 @@
 | links/empty-anchor | warning | no | links/page | https://developers.google.com/search/docs/crawling-indexing/links-crawlable |
 | links/generic-anchor | info | no | links/page | https://developers.google.com/search/docs/crawling-indexing/links-crawlable |
 | links/insecure-external | info | no | links/page | mielikki:original |
+| links/redirected | warning | no | links/site | squirrelscan:links/redirect-links |
 | links/trailing-slash | info | no | links/page | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
 | local/name-consistency | info | no | local/site | claude-seo:skills/seo-local/SKILL.md |
 | local/phone-consistency | warning | no | local/site | claude-seo:skills/seo-local/SKILL.md |
