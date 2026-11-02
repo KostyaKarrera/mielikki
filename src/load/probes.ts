@@ -34,6 +34,18 @@ export function formProbeUrls(startUrl: string): string[] {
   return out;
 }
 
+/**
+ * Same (already URL-encoded) path with the opposite trailing slash; undefined
+ * for the root and for paths whose last segment has a file extension.
+ */
+export function slashVariant(pathname: string): string | undefined {
+  if (/\.[^/.]+\/?$/.test(pathname)) return undefined;
+  const other = pathname.endsWith("/")
+    ? pathname.replace(/\/+$/, "")
+    : `${pathname}/`;
+  return other === "" || other === "/" ? undefined : other;
+}
+
 export async function loadAssets(
   site: Site,
   fetcher: Fetcher,
@@ -98,10 +110,10 @@ export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
     .sort((a, b) => byString(a.key, b.key))
     .filter((p) => p.key !== "/")
     .flatMap((p) => {
-      const path = p.url !== undefined ? new URL(p.url).pathname : p.key;
-      if (/\.[^/.]+\/?$/.test(path)) return [];
-      const other = path.endsWith("/") ? path.replace(/\/+$/, "") : `${path}/`;
-      return other === "" ? [] : [`${origin}${other}`];
+      const path =
+        p.url !== undefined ? new URL(p.url).pathname : encodeURI(p.key);
+      const other = slashVariant(path);
+      return other === undefined ? [] : [`${origin}${other}`];
     })
     .slice(0, MAX_SLASH_PROBES);
   urls.push(...slashed);

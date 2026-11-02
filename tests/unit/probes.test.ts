@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "../../src/config/schema.js";
-import { formProbeUrls, NOT_FOUND_PROBE } from "../../src/load/probes.js";
+import {
+  formProbeUrls,
+  NOT_FOUND_PROBE,
+  slashVariant,
+} from "../../src/load/probes.js";
 import { type CrawlOptions, loadUrl } from "../../src/load/url.js";
 import type { Site } from "../../src/model/types.js";
 import { rule as brokenInternal } from "../../src/rules/links/broken-internal.js";
@@ -202,19 +206,59 @@ describe("runProbes", () => {
         /\/(p\d\d|noslash)\/?$/.test(u) &&
         fetcher.calls.find((c) => c.url === u)?.o.follow === false,
     );
-    expect(slash).toHaveLength(10);
+    expect([...slash].sort()).toEqual(
+      [
+        `${O}/noslash/`,
+        ...Array.from({ length: 9 }, (_, i) => `${O}/p0${i}`),
+      ].sort(),
+    );
     expect(slash).toContain(`${O}/noslash/`);
     expect(slash).toContain(`${O}/p00`);
     expect(fetcher.requested).not.toContain(O);
     expect(fetcher.requested).not.toContain(`${O}/p11`);
   });
 
-  it("does not build a slash probe for a file path", async () => {
+  it("slashVariant toggles the slash, never for root or file paths", () => {
+    expect(slashVariant("/palvelut/")).toBe("/palvelut");
+    expect(slashVariant("/palvelut")).toBe("/palvelut/");
+    expect(slashVariant("/")).toBeUndefined();
+    expect(slashVariant("/x.pdf")).toBeUndefined();
+    expect(slashVariant("/docs/page.html")).toBeUndefined();
+    expect(slashVariant("/v1.2/")).toBeUndefined();
+    expect(slashVariant("/%C3%A4%20b/")).toBe("/%C3%A4%20b");
+  });
+
+  it("probes /palvelut for /palvelut/ and encodes non-ASCII paths", async () => {
     const { fetcher } = await run({
-      [`${O}/`]: html('<a href="/x.pdf">f</a>'),
+      [`${O}/`]: html(
+        '<a href="/palvelut/">p</a><a href="/palvelut/sähkö/">s</a><a href="/ä b/">a</a>',
+      ),
+      [`${O}/palvelut/`]: html("p"),
+      [`${O}/palvelut/s%C3%A4hk%C3%B6/`]: html("s"),
+      [`${O}/%C3%A4%20b/`]: html("a"),
     });
-    expect(fetcher.requested.some((u) => u.includes("x.pdf/"))).toBe(false);
-    expect(fetcher.requested.some((u) => u === `${O}/x.pdf`)).toBe(false);
+    const probes = fetcher.calls
+      .filter((c) => c.o.follow === false && !c.url.includes("__mielikki"))
+      .map((c) => c.url)
+      .sort();
+    expect(probes).toEqual(
+      [
+        `${O}/%C3%A4%20b`,
+        `${O}/palvelut`,
+        `${O}/palvelut/s%C3%A4hk%C3%B6`,
+      ].sort(),
+    );
+  });
+
+  it("does not probe the slash variant of a crawled page whose path has an extension", async () => {
+    const { fetcher, site } = await run({
+      [`${O}/`]: html('<a href="/docs/page.html">d</a>'),
+      [`${O}/docs/page.html`]: html("d"),
+    });
+    expect(site.pages.map((p) => p.url)).toContain(`${O}/docs/page.html`);
+    expect(
+      fetcher.requested.filter((u) => u.includes("/docs/page.html")),
+    ).toEqual([`${O}/docs/page.html`]);
   });
 });
 
