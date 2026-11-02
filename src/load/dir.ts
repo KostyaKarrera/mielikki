@@ -3,10 +3,11 @@ import path from "node:path";
 import type { Config } from "../config/schema.js";
 import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
-import { pageKey, resolveHref } from "../model/url.js";
+import { pageKey } from "../model/url.js";
 import { parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
 import { parseSitemap, type SitemapInfo } from "../parse/sitemap.js";
+import { buildSiteGraph, dedupeByKey, detectSite } from "./graph.js";
 
 const HTML = /\.html?$/i;
 /** The not-found page: /404.html, or /404/index.html of directory-style builds. */
@@ -32,24 +33,6 @@ async function walk(root: string, rel = ""): Promise<string[]> {
     else if (e.isFile()) out.push(r);
   }
   return out;
-}
-
-function detectSite(pages: Page[]): string | undefined {
-  const counts = new Map<string, number>();
-  for (const p of pages) {
-    const c = p.canonical?.trim() ?? "";
-    if (!/^https?:\/\//i.test(c) || !URL.canParse(c)) continue;
-    const origin = new URL(c).origin;
-    counts.set(origin, (counts.get(origin) ?? 0) + 1);
-  }
-  let best: string | undefined;
-  let max = 0;
-  for (const [origin, n] of [...counts].sort(([a], [b]) => (a < b ? -1 : 1)))
-    if (n > max) {
-      best = origin;
-      max = n;
-    }
-  return best;
 }
 
 async function readText(
@@ -109,12 +92,6 @@ async function loadSitemaps(
   return out;
 }
 
-function push(map: Map<string, string[]>, key: string, from: string): void {
-  const list = map.get(key);
-  if (list === undefined) map.set(key, [from]);
-  else if (!list.includes(from)) list.push(from);
-}
-
 export async function loadDir(dir: string, config: Config): Promise<Site> {
   const root = path.resolve(dir);
   const files = await walk(root);
@@ -139,60 +116,18 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
     }
   }
   pages.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  const byKey = new Map<string, Page>();
-  const unique: Page[] = [];
-  for (const p of pages)
-    if (!byKey.has(p.key)) {
-      byKey.set(p.key, p);
-      unique.push(p);
-    }
-
-  const siteUrl = config.site ?? detectSite(unique);
-
-  for (const p of [...unique, ...(notFound ? [notFound] : [])]) {
-    for (const l of p.links) {
-      const r = resolveHref(l.href, p.key, siteUrl);
-      l.internal = r.internal;
-      l.key = r.key;
-    }
-    for (const img of p.images) {
-      const r =
-        img.src === ""
-          ? { internal: false }
-          : resolveHref(img.src, p.key, siteUrl);
-      img.key = r.internal ? r.key : undefined;
-    }
-  }
+  const siteUrl = config.site ?? detectSite(dedupeByKey(pages));
+  const { byKey, unique, inlinks, inlinksAll, depth } = buildSiteGraph({
+    pages,
+    notFound,
+    siteUrl,
+    config,
+  });
 
   const robotsRaw = await readText(root, "/robots.txt");
   const robots =
     robotsRaw === undefined ? undefined : parseRobots(robotsRaw, siteUrl);
   const sitemaps = await loadSitemaps(root, robots?.sitemaps ?? []);
-
-  const inlinks = new Map<string, string[]>();
-  const inlinksAll = new Map<string, string[]>();
-  const outgoing = new Map<string, string[]>();
-  for (const p of unique)
-    for (const l of p.links) {
-      if (!l.internal || l.key === undefined || l.key === p.key) continue;
-      push(inlinksAll, l.key, p.key);
-      if (!l.inChrome) push(inlinks, l.key, p.key);
-      push(outgoing, p.key, l.key);
-    }
-
-  const depth = new Map<string, number>();
-  if (byKey.has("/")) {
-    depth.set("/", 0);
-    const queue = ["/"];
-    for (let i = 0; i < queue.length; i++) {
-      const cur = queue[i] as string;
-      for (const next of outgoing.get(cur) ?? [])
-        if (byKey.has(next) && !depth.has(next)) {
-          depth.set(next, (depth.get(cur) ?? 0) + 1);
-          queue.push(next);
-        }
-    }
-  }
 
   return {
     input: { kind: "dir", root },
