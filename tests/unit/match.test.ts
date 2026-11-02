@@ -8,6 +8,19 @@ describe("stemsMatch", () => {
     expect(stemsMatch("sähköasennus", "sähköasennuks")).toBe(true);
     expect(stemsMatch("asennus", "asentaj")).toBe(false);
     expect(stemsMatch("abc", "abc")).toBe(true);
+    expect(stemsMatch("sähkö", "sähkö")).toBe(true);
+    expect(stemsMatch("loviisa", "loviis")).toBe(true);
+  });
+
+  it("short stems must be exactly equal", () => {
+    expect(stemsMatch("sähkö", "sähköasennuks")).toBe(false);
+    expect(stemsMatch("sähkö", "sähköpalvelu")).toBe(false);
+  });
+
+  it("phraseIn does not cover long phrase word with short stem", () => {
+    expect(
+      phraseIn("sähköasennukset loviisa", "Example Sähkö Oy", getLang("fi")),
+    ).toBe("none");
   });
 });
 

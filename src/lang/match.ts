@@ -10,9 +10,10 @@ function commonPrefix(a: string, b: string): number {
   return i;
 }
 
-/** Equal, or common prefix >= max(5, min(len) - 2). */
+/** Equal, or (both stems >= 6 chars) common prefix >= max(5, min(len) - 2). */
 export function stemsMatch(a: string, b: string): boolean {
   if (a === b) return true;
+  if (a.length < 6 || b.length < 6) return false;
   return commonPrefix(a, b) >= Math.max(5, Math.min(a.length, b.length) - 2);
 }
 

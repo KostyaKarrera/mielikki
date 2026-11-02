@@ -131,11 +131,11 @@ describe("local/swap-test", () => {
       {
         ...pair,
         "alueet/helsinki/index.html": body("Helsingissä"),
-        "alueet/kotka/index.html": body("Kotkassa", "k"),
+        "alueet/kouvola/index.html": body("Kouvolassa", "k"),
         "alueet/hamina/index.html": body("Haminassa", "k"),
       },
       business({
-        areaServed: ["Loviisa", "Porvoo", "Helsinki", "Kotka", "Hamina"],
+        areaServed: ["Loviisa", "Porvoo", "Helsinki", "Kouvola", "Hamina"],
       }),
     );
     expect(f.map((x) => x.url)).toEqual([
