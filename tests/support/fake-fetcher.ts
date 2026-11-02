@@ -29,15 +29,19 @@ function fetched(
 /**
  * Fetcher answering from a script keyed by exact URL; unknown URLs give 404.
  * Does not follow redirects or apply mapUrl: records are returned as scripted.
+ * `delayMs` delays individual answers, to vary completion order between runs.
  */
 export function scriptedFetcher(
   script: Record<string, ScriptEntry>,
+  opts: { delayMs?(url: string): number } = {},
 ): Fetcher & { requested: string[] } {
   const requested: string[] = [];
   return {
     requested,
     async get(url) {
       requested.push(url);
+      const delay = opts.delayMs?.(url) ?? 0;
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
       const entry = script[url];
       if (entry === undefined)
         return { requested: url, hops: [], final: fetched(url, "", 404) };

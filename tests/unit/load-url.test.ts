@@ -26,8 +26,9 @@ async function crawl(
   config: Parameters<typeof parseConfig>[0] = {},
   opts: Partial<CrawlOptions> = {},
   start = `${O}/`,
+  delayMs?: (url: string) => number,
 ) {
-  const fetcher = scriptedFetcher(script);
+  const fetcher = scriptedFetcher(script, delayMs ? { delayMs } : {});
   const site = await loadUrl(start, parseConfig(config), fetcher, {
     ...OPTS,
     ...opts,
@@ -240,7 +241,7 @@ describe("loadUrl", () => {
     ]);
   });
 
-  it("(g) repeated runs give an identical Site", async () => {
+  it("(g) runs with different completion orders give an identical Site", async () => {
     const script: Record<string, ScriptEntry> = {
       [`${O}/`]: html(
         '<a href="/z/">z</a><a href="/a/">a</a><a href="/m">m</a><a href="/k/?q=1">k</a>',
@@ -253,16 +254,37 @@ describe("loadUrl", () => {
       [`${O}/b/`]: html("<p>b</p>"),
       [`${O}/m`]: html("<p>m</p>"),
     };
-    const snap = async () => {
-      const { site } = await crawl(script, {}, { maxPages: 6 });
-      return JSON.stringify({
-        pages: site.pages,
-        responses: [...(site.responses?.keys() ?? [])],
-        crawl: site.crawl,
-        depth: [...site.depth],
-      });
+    // Delays by position in the sorted URL list: ascending in one run, reversed in the other,
+    // so the fetcher answers each batch in opposite completion orders.
+    const urls = Object.keys(script).sort();
+    const rank = (u: string): number => {
+      const i = urls.indexOf(u);
+      return i < 0 ? urls.length : i;
     };
-    expect(await snap()).toBe(await snap());
+    const snap = async (delayMs: (url: string) => number) => {
+      const { site, fetcher } = await crawl(
+        script,
+        {},
+        { maxPages: 6 },
+        `${O}/`,
+        delayMs,
+      );
+      return {
+        requested: fetcher.requested,
+        json: JSON.stringify({
+          pages: site.pages,
+          responses: [...(site.responses?.keys() ?? [])],
+          crawl: site.crawl,
+          depth: [...site.depth],
+          inlinks: [...site.inlinks],
+          inlinksAll: [...site.inlinksAll],
+        }),
+      };
+    };
+    const up = await snap((u) => 2 * rank(u));
+    const down = await snap((u) => 2 * (urls.length - rank(u)));
+    expect(down.json).toBe(up.json);
+    expect(down.requested).toEqual(up.requested);
   });
 
   it("(h) URLs with a query are not requested and are skipped", async () => {
