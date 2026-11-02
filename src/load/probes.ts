@@ -2,6 +2,7 @@ import { isLocalHost } from "../model/host.js";
 import type { Asset, FetchRecord, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import type { Fetcher } from "../net/fetch.js";
+import { isAssetPath } from "../net/policy.js";
 import { parsePage } from "../parse/page.js";
 
 export const NOT_FOUND_PROBE = "/__mielikki_404__/";
@@ -54,14 +55,22 @@ export async function loadAssets(
   const origin = site.origin;
   if (origin === undefined) return;
   const keys = new Set<string>();
+  const add = (href: string | undefined, from: string, fileOnly: boolean) => {
+    if (href === undefined || href.trim() === "") return;
+    const res = resolveHref(href, from, site.site);
+    if (!res.internal || res.key === undefined) return;
+    if (fileOnly && !isAssetPath(res.key)) return;
+    keys.add(res.key);
+  };
   for (const p of site.byKey.values()) {
     for (const img of p.images) if (img.key !== undefined) keys.add(img.key);
-    for (const r of p.resources) {
-      if (r.src === "") continue;
-      const res = resolveHref(r.src, p.key, site.site);
-      if (res.internal && res.key !== undefined) keys.add(res.key);
-    }
+    for (const r of p.resources) add(r.src, p.key, false);
+    // What a directory build has as files: og:image and linked files (PDF etc.).
+    add(p.og["og:image"], p.key, false);
+    for (const l of p.links) add(l.href, p.key, true);
   }
+  for (const sm of site.sitemaps)
+    for (const loc of sm.urls) add(loc, "/", true);
   // Pages are not assets: only file-like keys (with an extension) are requested.
   const chosen = [...keys]
     .filter((k) => !k.endsWith("/") && !site.byKey.has(k))

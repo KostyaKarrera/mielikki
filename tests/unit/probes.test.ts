@@ -69,6 +69,36 @@ describe("loadAssets", () => {
     expect(brokenInternalLink(site)).toBe(true);
   });
 
+  it("also checks og:image, linked files and sitemap files, but not linked pages", async () => {
+    const { site, fetcher } = await run({
+      [`${O}/`]: html(
+        '<head><meta property="og:image" content="/og.jpg"></head><main><a href="/hinnasto.pdf">p</a><a href="/noslash">n</a></main>',
+      ),
+      [`${O}/sitemap.xml`]: {
+        final: {
+          url: `${O}/sitemap.xml`,
+          status: 200,
+          headers: { "content-type": "application/xml" },
+          contentType: "application/xml",
+          bytes: 1,
+          body: `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${O}/esite.pdf</loc></url></urlset>`,
+        },
+      },
+      [`${O}/og.jpg`]: asset({ "content-type": "image/jpeg" }),
+      [`${O}/hinnasto.pdf`]: asset({ "content-type": "application/pdf" }),
+      [`${O}/esite.pdf`]: asset({ "content-type": "application/pdf" }),
+    });
+    expect([...site.assets.keys()]).toEqual([
+      "/esite.pdf",
+      "/hinnasto.pdf",
+      "/og.jpg",
+    ]);
+    const heads = fetcher.calls
+      .filter((c) => c.o.method === "HEAD")
+      .map((c) => c.url);
+    expect(heads).not.toContain(`${O}/noslash`);
+  });
+
   it("retries a 405/501 HEAD as GET without body", async () => {
     const { fetcher, site } = await run(
       { [`${O}/`]: html('<img src="/a.jpg" alt="x">') },

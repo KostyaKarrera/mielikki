@@ -1,8 +1,8 @@
 # Mielikki
 
-Local, offline SEO audit CLI for built static sites. Point it at a build directory (`dist/`), get a list of concrete problems with fixes. Deterministic, no network access, no telemetry, no overall score.
+Local, offline SEO audit CLI for built static sites. Point it at a build directory (`dist/`), get a list of concrete problems with fixes. Deterministic, no telemetry, no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at.
 
-> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works. Not implemented yet, planned in later releases: URL mode (crawling a live site and HTTP checks), `perf` (Lighthouse), `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those commands do not exist yet.
+> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works; URL mode (`check <url>`) crawls a running site and applies the same rules (HTTP-specific checks are still to come). Not implemented yet, planned in later releases: `perf` (Lighthouse), `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those commands do not exist yet.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
@@ -80,13 +80,26 @@ mielikki check dist --profile launch --fail-on warning
 
 Options: `--config <path>`, `--profile dev|launch`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info`, `--rules <mask,...>` (e.g. `crawl/*,core/title-*`), `--min-severity` (text format).
 
+## URL mode
+
+```sh
+npx mielikki check http://localhost:4321/          # a dev/preview server
+npx mielikki check https://sahko.example/ --max-pages 50
+```
+
+`check` with an `http://` or `https://` argument crawls the site instead of reading files: robots.txt, sitemaps, then pages level by level from the start URL, only on that host (URLs on `config.site` are mapped to it), then the referenced assets (`HEAD`). Pages that nothing links to and no sitemap lists are not found, unlike in directory mode. Results do not depend on response timing.
+
+Crawl limits (ignored for a directory): `--max-pages <n>` (200), `--max-assets <n>` (300), `--concurrency <n>` (4 for local hosts, 2 otherwise), `--delay <ms>` between requests (0 local, 100 otherwise), `--timeout <ms>` per request (15000), `--max-bytes <n>` per response (5000000), `--respect-robots` (skip URLs disallowed for `*`). At most 10 redirects are followed. User agent: `Mielikki/<version> (+https://github.com/KostyaKarrera/mielikki)`.
+
+Only audit sites you own or have permission to audit: for a non-local host other than `config.site`, a warning is printed to stderr. A start URL with credentials, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL (network error, timeout, HTTP 4xx/5xx) are usage errors (exit 2).
+
 ## Exit codes
 
-| Code | Meaning                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------- |
-| 0    | No findings at or above `--fail-on` (default `error`)                                                   |
-| 1    | At least one finding at or above `--fail-on`                                                            |
-| 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it) |
+| Code | Meaning                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | No findings at or above `--fail-on` (default `error`)                                                                          |
+| 1    | At least one finding at or above `--fail-on`                                                                                   |
+| 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it, unreachable start URL) |
 
 ## Use with Claude Code
 

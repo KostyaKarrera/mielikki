@@ -292,7 +292,12 @@ describe("loadUrl", () => {
       [`${O}/`]: html('<a href="/a/?x=1#f">a</a><a href="/img/a.jpg">i</a>'),
     });
     expect(fetcher.requested).not.toContain(`${O}/a/?x=1`);
-    expect(fetcher.requested).not.toContain(`${O}/img/a.jpg`);
+    // A linked file is not crawled as a page; it is only HEAD-checked as an asset.
+    expect(
+      fetcher.calls
+        .filter((c) => c.url === `${O}/img/a.jpg`)
+        .map((c) => c.o.method),
+    ).toEqual(["HEAD"]);
     expect(site.crawl?.skipped).toEqual([`${O}/a/?x=1`]);
     expect(site.crawl?.limitReached).toBe(false);
   });
