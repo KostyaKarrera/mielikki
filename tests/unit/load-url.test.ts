@@ -156,7 +156,7 @@ describe("loadUrl", () => {
     expect(fetcher.requested).not.toContain(`${O}/q3/`);
   });
 
-  it("caps skipped at 50 sorted entries", async () => {
+  it("keeps every skipped URL, sorted (http/crawl-limit lists the first 50)", async () => {
     const links = Array.from(
       { length: 80 },
       (_, i) => `<a href="/s${String(i).padStart(2, "0")}/">s</a>`,
@@ -167,7 +167,7 @@ describe("loadUrl", () => {
       { maxPages: 1 },
     );
     const skipped = site.crawl?.skipped ?? [];
-    expect(skipped).toHaveLength(50);
+    expect(skipped).toHaveLength(80);
     expect(skipped).toEqual([...skipped].sort());
     expect(skipped[0]).toBe(`${O}/s00/`);
   });

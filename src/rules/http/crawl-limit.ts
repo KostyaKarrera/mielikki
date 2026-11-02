@@ -1,5 +1,7 @@
 import type { SiteRule } from "../types.js";
 
+const MAX_LISTED = 50;
+
 export const rule: SiteRule = {
   meta: {
     id: "http/crawl-limit",
@@ -15,10 +17,11 @@ export const rule: SiteRule = {
   checkSite(ctx) {
     const crawl = ctx.site.crawl;
     if (crawl === undefined || !crawl.limitReached) return;
+    const n = crawl.skipped.length;
     ctx.report({
       nonBlocking: true,
-      message: `The page limit was reached; ${crawl.skipped.length} URL(s) were not checked${crawl.skipped.length >= 50 ? " (list truncated)" : ""}`,
-      details: { skipped: crawl.skipped },
+      message: `The page limit was reached; ${n} discovered URL(s) were not checked, and links or targets on pages not crawled are not reported${n > MAX_LISTED ? ` (first ${MAX_LISTED} listed)` : ""}`,
+      details: { skipped: crawl.skipped.slice(0, MAX_LISTED) },
     });
   },
 };

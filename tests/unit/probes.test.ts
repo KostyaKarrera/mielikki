@@ -121,6 +121,28 @@ describe("loadAssets", () => {
     expect(site.assets.get("/a.jpg")?.bytes).toBe(9);
   });
 
+  it("retries a 403 HEAD as GET without body (sites that reject HEAD)", async () => {
+    const { fetcher, site } = await run(
+      { [`${O}/`]: html('<img src="/a.jpg" alt="x">') },
+      `${O}/`,
+      {},
+      {
+        respond: (url, o) =>
+          url === `${O}/a.jpg`
+            ? o.method === "HEAD"
+              ? asset({}, 403)
+              : asset({ "content-length": "9" })
+            : undefined,
+      },
+    );
+    const calls = fetcher.calls.filter((c) => c.url === `${O}/a.jpg`);
+    expect(calls.map((c) => c.o)).toEqual([
+      { method: "HEAD" },
+      { method: "GET", wantBody: false },
+    ]);
+    expect(site.assets.get("/a.jpg")?.bytes).toBe(9);
+  });
+
   it("takes only the first max keys in sorted order", async () => {
     const { site } = await run(
       {

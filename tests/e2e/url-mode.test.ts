@@ -314,3 +314,78 @@ describe("check <url>: CLI", () => {
     expect(JSON.parse(out).summary.pages).toBe(2);
   });
 });
+
+describe("check <url>: broken is decided from what was requested", () => {
+  const ids = (r: { out: string }, id: string): string[] =>
+    (JSON.parse(r.out) as CheckResult).findings
+      .filter((f) => f.ruleId === id)
+      .map((f) => `${f.url ?? ""} ${f.message}`);
+
+  /** Adds HTML right after <main> of the fixture's start page. */
+  async function inject(dir: string, extra: string): Promise<void> {
+    const { readFile, writeFile } = await import("node:fs/promises");
+    const file = path.join(dir, "dist/index.html");
+    const html = await readFile(file, "utf8");
+    await writeFile(file, html.replace("<main>", `<main>${extra}`));
+  }
+
+  it("--max-pages 2: pages that were not crawled are not broken or missing", async () => {
+    const dir = await copyFixture("good");
+    const s = await serve(path.join(dir, "dist"));
+    const r = await check(`${s.url}/`, dir, { maxPages: 2 });
+    expect(ids(r, "links/broken-internal")).toEqual([]);
+    expect(ids(r, "targets/page-missing")).toEqual([]);
+    expect(ids(r, "http/crawl-limit")).toHaveLength(1);
+  });
+
+  it("--max-assets 0: images that were not requested are not broken", async () => {
+    const dir = await copyFixture("good");
+    const s = await serve(path.join(dir, "dist"));
+    const r = await check(`${s.url}/`, dir, { maxAssets: 0 });
+    expect(ids(r, "images/broken")).toEqual([]);
+    expect(ids(r, "links/broken-internal")).toEqual([]);
+  });
+
+  it("an internal link that 301s (on-host or off-host) is only links/redirected; a 404 link is broken", async () => {
+    const dir = await copyFixture("good");
+    await inject(
+      dir,
+      '<p><a href="/vanha/">vanha</a> <a href="/kauppa/">kauppa</a> <a href="/ei-ole/">ei</a></p>',
+    );
+    const s = await serve(path.join(dir, "dist"), {
+      redirects: {
+        "/vanha/": { status: 301, location: "/palvelut/" },
+        "/kauppa/": { status: 301, location: "https://kauppa.example/" },
+      },
+    });
+    const r = await check(`${s.url}/`, dir);
+    const broken = ids(r, "links/broken-internal");
+    expect(broken).toHaveLength(1);
+    expect(broken[0]).toMatch(
+      /"\/ei-ole\/" points to \/ei-ole\/, which does not exist/,
+    );
+    const redirected = ids(r, "links/redirected").join("\n");
+    expect(redirected).toContain(`${s.url}/vanha/`);
+    expect(redirected).toContain(`${s.url}/kauppa/`);
+  });
+
+  it("an image that redirects to another host (CDN) is not broken; a missing image is", async () => {
+    const dir = await copyFixture("good");
+    await inject(
+      dir,
+      '<img src="/images/cdn.jpg" alt="cdn" width="1" height="1"><img src="/images/puuttuu.jpg" alt="x" width="1" height="1">',
+    );
+    const s = await serve(path.join(dir, "dist"), {
+      redirects: {
+        "/images/cdn.jpg": {
+          status: 302,
+          location: "https://cdn.example/cdn.jpg",
+        },
+      },
+    });
+    const r = await check(`${s.url}/`, dir);
+    const broken = ids(r, "images/broken");
+    expect(broken).toHaveLength(1);
+    expect(broken[0]).toContain("/images/puuttuu.jpg");
+  });
+});

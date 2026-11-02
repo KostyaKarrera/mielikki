@@ -81,7 +81,9 @@ export async function loadAssets(
     chosen.map(async (key) => {
       const url = fileUrl(origin, key);
       let rec = await fetcher.get(url, { method: "HEAD" });
-      if (rec.final?.status === 405 || rec.final?.status === 501)
+      // Some servers (e.g. behind Cloudflare) reject HEAD with 403/405/501.
+      const status = rec.final?.status;
+      if (status === 403 || status === 405 || status === 501)
         rec = await fetcher.get(url, { method: "GET", wantBody: false });
       return rec;
     }),

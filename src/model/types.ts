@@ -127,5 +127,6 @@ export interface Site {
   depth: Map<string, number>; // BFS from '/' over all internal links
   origin?: string; // crawl host (URL mode)
   responses?: Map<string, FetchRecord>; // URL mode
+  /** URL mode: `skipped` lists every discovered URL that was not requested, sorted. */
   crawl?: { limitReached: boolean; skipped: string[] };
 }

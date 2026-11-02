@@ -26,7 +26,6 @@ export interface CrawlOptions {
   respectRobots: boolean;
 }
 
-const MAX_SKIPPED = 50;
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 /** Directives that carry a value after ':' (not a user-agent prefix). */
 const VALUE_DIRECTIVES = new Set([
@@ -259,7 +258,7 @@ export async function loadUrl(
     responses,
     crawl: {
       limitReached,
-      skipped: [...skipped].sort(byString).slice(0, MAX_SKIPPED),
+      skipped: [...skipped].sort(byString),
     },
   };
   await loadAssets(site, guarded, opts.maxAssets);
