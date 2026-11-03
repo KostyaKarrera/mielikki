@@ -6,8 +6,9 @@ Publishing is done only by the owner, or on the owner's explicit confirmation. E
 2. **Check the package contents** (owner confirms). `npm pack --dry-run` lists only `dist/`, `vendor/`, `LICENSE`, `NOTICE`, `README.md`, `package.json`. The same is enforced by `tests/e2e/package.test.ts`.
 3. **Merge the feature branches into `main` through pull requests** (owner confirms): `feat/plan-2-url-perf` and `feat/plan-3-research-gsc`. CI must be green.
 4. **Make sure `package.json` version, `CHANGELOG.md` and the tag agree** (owner confirms). The tag is `v` plus the version, for example `v1.0.0`.
-5. **Add the `NPM_TOKEN` repository secret** (owner confirms): an npm automation token that bypasses 2FA, or switch to npm trusted publishing and drop the token. The workflow also needs `id-token: write` for provenance (already set).
-6. **Create and push the tag** (owner confirms): `git tag v1.0.0 && git push origin v1.0.0`. This starts `.github/workflows/release.yml`: `npm ci`, lint, typecheck, build, test, then `npm publish --provenance --access public`.
+5. **Add the `NPM_TOKEN` repository secret** (owner confirms): an npm automation token that bypasses 2FA, or switch to npm trusted publishing and drop the token. The workflow also needs `id-token: write` for provenance (set on the `publish` job only).
+   Also create the GitHub environment `npm-release` (Settings, Environments) and add yourself as a required reviewer: the `publish` job waits for that approval, so a pushed tag alone cannot publish. Put `NPM_TOKEN` in that environment's secrets rather than in repository secrets if you want it available only to approved runs.
+6. **Create and push the tag** (owner confirms): `git tag v1.0.0 && git push origin v1.0.0`. This starts `.github/workflows/release.yml`: the `verify` job (tag equals `v` plus the package.json version, the tagged commit is on `main`, `npm ci --ignore-scripts`, build, lint, typecheck, test), then, after the `npm-release` approval, the `publish` job (`npm publish --provenance --access public`).
 7. **Verify the release** (owner confirms): `npx mielikki@1.0.0 --version` prints `1.0.0`; the package page shows the provenance badge.
 8. Optional (owner confirms): create a GitHub Release from the tag; update the pinned Mielikki commit or version in the hub repository.
 
