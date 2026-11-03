@@ -62,9 +62,38 @@ function workerFile(): string {
     : path.join(path.dirname(here), "worker.js");
 }
 
-let worker: Worker | undefined;
-let workerHeapMb = 0;
-let ready: Promise<void> = Promise.resolve();
+/** Bounds that make every request settle, whatever the worker does. */
+export const parseLimits = {
+  /** A new worker must signal ready within this time (else respawn once). */
+  readyMs: 10_000,
+  /** Longest we wait for terminate() before abandoning a worker. */
+  terminateMs: 3000,
+  /** Extra time beyond the page wall clock before the outer guard settles. */
+  graceMs: 5000,
+};
+
+/** Test seam: replaces the Worker constructor. */
+export const parseHooks: {
+  createWorker?: (file: string, heapMb: number) => Worker;
+} = {};
+
+let nextId = 1;
+/** Opt-in lifecycle trace (MIELIKKI_DEBUG_PARSE=1): no page content, no secrets. */
+function debug(id: number, event: string): void {
+  if (process.env.MIELIKKI_DEBUG_PARSE !== "1") return;
+  process.stderr.write(
+    `[mielikki-parse] ${new Date().toISOString()} worker#${id} ${event}\n`,
+  );
+}
+
+interface Spawned {
+  w: Worker;
+  id: number;
+  heapMb: number;
+  ready: Promise<void>;
+}
+
+let current: Spawned | undefined;
 let spawns = 0;
 let tail: Promise<unknown> = Promise.resolve();
 
@@ -73,71 +102,101 @@ export function workerSpawnCount(): number {
   return spawns;
 }
 
-function spawn(heapMb: number): Worker {
+function spawn(heapMb: number): Spawned {
   const file = workerFile();
   if (!existsSync(file))
     throw new Error(
       `mielikki installation is broken: parse worker not found at ${file}`,
     );
   spawns++;
-  const w = new Worker(file, {
-    resourceLimits: { maxOldGenerationSizeMb: heapMb, stackSizeMb: 4 },
-  });
+  const id = nextId++;
+  const w =
+    parseHooks.createWorker?.(file, heapMb) ??
+    new Worker(file, {
+      resourceLimits: { maxOldGenerationSizeMb: heapMb, stackSizeMb: 4 },
+    });
+  debug(id, `spawn heap=${heapMb}MB`);
   // A worker must never be able to raise an unhandled error in the main
   // thread, e.g. an out-of-memory racing with terminate().
-  w.on("error", () => undefined);
-  w.on("messageerror", () => undefined);
+  w.on("error", (e: Error & { code?: string }) =>
+    debug(id, e.code === "ERR_WORKER_OUT_OF_MEMORY" ? "oom" : "error"),
+  );
+  w.on("messageerror", () => debug(id, "messageerror"));
+  w.on("exit", (code: number) => debug(id, `exited code=${code}`));
   w.unref(); // an idle worker never keeps the CLI alive
   // The time limit starts when the worker is up, not while it is starting.
-  ready = new Promise<void>((resolve, reject) => {
+  const ready = new Promise<void>((resolve, reject) => {
     const off = (): void => {
+      clearTimeout(timer);
       w.off("message", onReady);
       w.off("error", onFail);
       w.off("exit", onFail);
     };
     const onReady = (): void => {
       off();
+      debug(id, "ready");
       resolve();
     };
     const onFail = (): void => {
       off();
       reject(new PageUnparseableError("error"));
     };
+    const timer = setTimeout(() => {
+      debug(id, "ready-timeout");
+      onFail();
+    }, parseLimits.readyMs);
+    timer.unref();
     w.once("message", onReady);
     w.once("error", onFail);
     w.once("exit", onFail);
   });
   ready.catch(() => undefined);
-  workerHeapMb = heapMb;
-  return w;
+  return { w, id, heapMb, ready };
 }
 
-function drop(w: Worker): void {
-  if (worker === w) worker = undefined;
-  void w.terminate();
+/** Terminates a worker without ever waiting for it: it is abandoned if it will not die. */
+function drop(s: Spawned): void {
+  if (current === s) current = undefined;
+  debug(s.id, "terminate-requested");
+  s.w.unref();
+  const timer = setTimeout(
+    () => debug(s.id, "terminate-abandoned"),
+    parseLimits.terminateMs,
+  );
+  timer.unref();
+  void Promise.resolve(s.w.terminate())
+    .catch(() => undefined)
+    .finally(() => clearTimeout(timer));
+}
+
+/** A ready worker of at least `need` MB; a worker that never gets ready is replaced once. */
+async function acquire(need: number): Promise<Spawned> {
+  for (let attempt = 0; ; attempt++) {
+    if (current !== undefined && current.heapMb < need) drop(current);
+    current ??= spawn(need);
+    const s = current;
+    try {
+      await s.ready;
+      return s;
+    } catch {
+      drop(s);
+      if (attempt >= 1) throw new PageUnparseableError("error");
+    }
+  }
 }
 
 async function runOne(
   html: string,
   key: string,
   file: string | undefined,
-  opts: SafeParseOptions,
+  timeoutMs: number,
+  ctx: { cancelled: boolean },
 ): Promise<Page> {
   // Only a hint: a deep-looking page still goes to the worker, which decides.
   const hint = maxOpenDepth(html);
-  const timeoutMs =
-    opts.timeoutMs ?? timeoutFor(html.length, opts.own === true);
-  const need = heapMbFor(html.length);
-  // a bigger worker also serves small pages; a too small one is replaced
-  if (worker !== undefined && workerHeapMb < need) drop(worker);
-  worker ??= spawn(need);
-  const w = worker;
-  try {
-    await ready;
-  } catch (e) {
-    drop(w);
-    throw e;
-  }
+  const s = await acquire(heapMbFor(html.length));
+  if (ctx.cancelled) throw new PageUnparseableError("timeout");
+  const { w } = s;
   const refuse = (reason: UnparseableReason): PageUnparseableError =>
     hint > MAX_NESTING
       ? new PageUnparseableError("too-deep", hint)
@@ -155,7 +214,7 @@ async function runOne(
     };
     const fail = (reason: UnparseableReason): void => {
       finish(() => {
-        drop(w);
+        drop(s);
         reject(refuse(reason));
       });
     };
@@ -169,7 +228,10 @@ async function runOne(
     const onError = (e: Error & { code?: string }): void =>
       fail(e.code === "ERR_WORKER_OUT_OF_MEMORY" ? "memory" : "error");
     const onExit = (): void => fail("error");
-    const timer = setTimeout(() => fail("timeout"), timeoutMs);
+    const timer = setTimeout(() => {
+      debug(s.id, "timeout");
+      fail("timeout");
+    }, timeoutMs);
     w.on("message", onMessage);
     w.on("exit", onExit);
     w.once("error", onError);
@@ -183,7 +245,8 @@ async function runOne(
  * process. Rejects with PageUnparseableError when the limits are hit
  * (reason "too-deep" when the page also looks deeper than MAX_NESTING);
  * any other exception is a bug and propagates as a plain Error. Calls are
- * serialized.
+ * serialized, and every call settles within the page wall clock plus the
+ * worker start-up bounds and a fixed grace, whatever the worker does.
  */
 export function parsePageSafe(
   html: string,
@@ -191,7 +254,38 @@ export function parsePageSafe(
   file?: string,
   opts: SafeParseOptions = {},
 ): Promise<Page> {
-  const run = tail.then(() => runOne(html, key, file, opts));
+  const timeoutMs =
+    opts.timeoutMs ?? timeoutFor(html.length, opts.own === true);
+  const run = tail.then(
+    () =>
+      new Promise<Page>((resolve, reject) => {
+        const ctx = { cancelled: false };
+        // outer guard, independent of any worker event
+        const guard = setTimeout(
+          () => {
+            ctx.cancelled = true;
+            if (current !== undefined) drop(current);
+            reject(new PageUnparseableError("timeout"));
+          },
+          timeoutMs + 2 * parseLimits.readyMs + parseLimits.graceMs,
+        );
+        runOne(html, key, file, timeoutMs, ctx).then(
+          (p) => {
+            clearTimeout(guard);
+            resolve(p);
+          },
+          (e) => {
+            clearTimeout(guard);
+            reject(e);
+          },
+        );
+      }),
+  );
   tail = run.catch(() => undefined);
   return run;
+}
+
+/** Test seam: forget (and terminate) the current worker. */
+export function resetParseWorker(): void {
+  if (current !== undefined) drop(current);
 }
