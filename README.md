@@ -8,18 +8,18 @@ Mielikki is built for small local-business sites (it ships with Finnish, Swedish
 
 ## Install
 
-```sh
-npx mielikki --help         # run without installing
-npm i -D mielikki           # or add to a project
-```
-
-To try an unreleased commit, install from git:
+Mielikki is installed straight from GitHub (it is not on the npm registry yet):
 
 ```sh
-npm i -D github:KostyaKarrera/mielikki
+npx github:KostyaKarrera/mielikki --help     # run once, nothing to install
+npm i -D github:KostyaKarrera/mielikki       # or add to a project; then use `npx mielikki …`
 ```
+
+Pin a commit for reproducible CI runs: `npm i -D github:KostyaKarrera/mielikki#<commit-sha>`. The first run takes about ten seconds because the code is compiled on install.
 
 The compiled `dist/` is not committed: on a git install npm runs the package's `prepare` script (`npm run build`), which compiles it with the package's own dev dependencies. Installing with `--ignore-scripts` skips that step and leaves no CLI.
+
+Once the package is published to npm, `npx mielikki` and `npm i -D mielikki` will work as well; the examples below use the short `mielikki` command that a project install provides.
 
 Requires Node.js 22.12 or newer.
 
