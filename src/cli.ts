@@ -261,7 +261,7 @@ export function buildProgram(): Command {
   research
     .command("trends")
     .description(
-      "Google Trends interest over time (unofficial source; sends requests to trends.google.com)",
+      "Google Trends interest over time (experimental: unofficial endpoint, may be rate-limited or stop working; sends requests to trends.google.com)",
     )
     .argument(
       "<terms...>",

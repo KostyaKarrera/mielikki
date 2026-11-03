@@ -192,7 +192,10 @@ export async function serveDir(
       return;
     }
 
-    if (pathname.startsWith("/trends/api/") && b.trends) {
+    if (
+      (pathname.startsWith("/trends/api/") || pathname === "/trends/") &&
+      b.trends
+    ) {
       trendsLog.push(req.url ?? "");
       trendsCookies.push(req.headers.cookie ?? "");
       const params = new URL(req.url ?? "/", "http://x").searchParams;

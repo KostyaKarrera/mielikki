@@ -50,7 +50,7 @@ Google Suggest autocomplete (`suggestqueries.google.com`) for seed phrases: `sug
 
 Google Trends interest over time (`trends.google.com`). Rows: `term`, `weekStart`, `value` (0-100, relative interest, not search volume).
 
-**Trends is an UNOFFICIAL source.** It may break at any time or answer with 429 or a consent page. Then the command fails cleanly with exit 1 and a message, and nothing else is affected.
+**Trends is an UNOFFICIAL source.** It may break at any time or answer with 429 or a consent page. Then the command fails cleanly with exit 1 and a message, and nothing else is affected. Each run first opens the Trends page once to obtain the session cookie Google requires (kept in memory only, sent to trends.google.com only, never cached or printed) and pauses at least 1 s between consecutive requests. If a group after the first fails, the groups already fetched are kept, the failure goes to `errors`, and the exit code is 0.
 
 - `--geo` and `--hl` default to the config `region` and `language`; `--timeframe` (default `today 5-y`). For timeframes that are not weekly (such as `now 7-d`), `weekStart` holds the full timestamp of the point.
 - Google allows 5 terms per request. More terms are fetched in groups of 5 that share the first term as an anchor, and later groups are rescaled by the sums of the anchor, so values from different groups are comparable only approximately (they may exceed 100; 1 decimal). If the anchor has no interest in a group, that group is reported as "not comparable" in `errors`.

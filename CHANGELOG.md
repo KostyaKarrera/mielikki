@@ -13,7 +13,8 @@ First stable release. The rule catalogue now has 108 rules (list: [docs/rules.md
 - Launch profile (`--profile launch`): raises launch-blocking rules to `error`; `prelaunch: true` downgrades findings caused by an intentionally closed site in the `dev` profile.
 - URL mode (`check <url>`): crawls a running site and applies the same rules plus HTTP rules (status codes, redirects, headers, compression, caching); `--respect-robots` is opt-in.
 - `perf`: Lighthouse measurements of the pages you name, with `perf/*` rules. `lighthouse` and `chrome-launcher` are optional peer dependencies.
-- `research suggest`, `research trends`, `research competitors`: Google suggestions, Google Trends (unofficial source, may stop working) and competitor structure, written as json, csv or md. See [docs/research.md](docs/research.md).
+- `research suggest`, `research trends`, `research competitors`: Google suggestions, Google Trends and competitor structure, written as json, csv or md. See [docs/research.md](docs/research.md).
+- `research trends` (experimental): uses Google Trends' unofficial web endpoints; Google may answer 429 or change the format without notice, in which case the command exits 1 and nothing else is affected.
 - `gsc auth`, `gsc inspect`, `gsc queries`: read-only Search Console access with your own OAuth client; the token is stored outside the project. See [docs/gsc.md](docs/gsc.md).
 - `rules`: prints the rule catalogue (`--format md` generates `docs/rules.md`).
 - Rules covering core metadata, crawlability, links, images, structured data and NAP consistency, social tags, accessibility, mobile, legal pages, local SEO, content and target queries, with Finnish, Swedish and English language support.

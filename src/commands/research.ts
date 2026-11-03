@@ -219,6 +219,7 @@ export async function runResearchTrends(
         hl,
         timeframe: opts.timeframe,
         baseUrl: deps.baseUrl,
+        sleep: deps.sleep,
       },
       http,
       view,

@@ -27,6 +27,8 @@ export interface TrendsOptions {
   timeframe: string;
   /** Test override of https://trends.google.com. */
   baseUrl?: string;
+  /** Test override of the pause between Trends requests. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export type TrendsResult = DataFile<TrendsRow> & { summary: TrendsSummary[] };
@@ -40,6 +42,15 @@ export class ResearchSourceError extends Error {
 
 const DEFAULT_BASE = "https://trends.google.com";
 const GROUP = 5;
+const PAUSE_MS = 1000;
+
+/** Sequential Trends session: one bootstrap cookie, >= 1 s between requests. */
+interface Session {
+  base: string;
+  cookie: string | undefined;
+  requests: number;
+  sleep: (ms: number) => Promise<void>;
+}
 
 const Explore = z.object({
   widgets: z.array(
@@ -82,9 +93,16 @@ function cookiePairs(headers: Record<string, string>): string {
 
 async function get(
   http: HttpJson,
+  session: Session,
   url: string,
-  headers: Record<string, string> = {},
 ): Promise<{ headers: Record<string, string>; text: string }> {
+  // the cookie only ever goes to the origin it came from
+  const headers: Record<string, string> =
+    session.cookie && url.startsWith(`${session.base}/`)
+      ? { cookie: session.cookie }
+      : {};
+  if (session.requests > 0) await session.sleep(PAUSE_MS);
+  session.requests++;
   let res: Awaited<ReturnType<HttpJson["getText"]>>;
   try {
     res = await http.getText(url, { headers });
@@ -101,7 +119,8 @@ async function fetchTimeline(
   o: TrendsOptions,
   http: HttpJson,
   cache: DiskCache,
-  base: string,
+  session: Session,
+  bootstrap: () => Promise<void>,
 ): Promise<z.infer<typeof Multiline>["default"]["timelineData"]> {
   const key = `trends|${o.geo}|${o.hl}|${o.timeframe}|${JSON.stringify(group)}`;
   let hit: string | undefined;
@@ -136,8 +155,11 @@ async function fetchTimeline(
     property: "",
   });
   const hl = encodeURIComponent(o.hl);
+  const base = session.base;
+  await bootstrap();
   const explore = await get(
     http,
+    session,
     `${base}/trends/api/explore?hl=${hl}&tz=0&req=${encodeURIComponent(req)}`,
   );
   const ex = Explore.safeParse(stripPrefix(explore.text));
@@ -146,11 +168,10 @@ async function fetchTimeline(
   if (!widget?.token || widget.request === undefined) {
     throw new ResearchSourceError("timeline widget not found");
   }
-  const cookie = cookiePairs(explore.headers);
   const data = await get(
     http,
+    session,
     `${base}/trends/api/widgetdata/multiline?hl=${hl}&tz=0&req=${encodeURIComponent(JSON.stringify(widget.request))}&token=${encodeURIComponent(widget.token)}`,
-    cookie ? { cookie } : {},
   );
   const ml = Multiline.safeParse(stripPrefix(data.text));
   if (
@@ -232,12 +253,42 @@ export async function runTrends(
     }
   }
 
+  const session: Session = {
+    base,
+    cookie: undefined,
+    requests: 0,
+    sleep: o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+  };
+  // one bootstrap GET per run, only when a network call is actually needed
+  let booted = false;
+  const bootstrap = async (): Promise<void> => {
+    if (booted) return;
+    booted = true;
+    const r = await get(
+      http,
+      session,
+      `${base}/trends/?geo=${encodeURIComponent(o.geo)}`,
+    );
+    session.cookie = cookiePairs(r.headers) || undefined;
+  };
+
   const seen = new Set<string>();
   const rows: TrendsRow[] = [];
   const errors: ResearchError[] = [];
   let anchorBase: Map<string, number> | undefined;
   for (const [gi, group] of groups.entries()) {
-    const timeline = await fetchTimeline(group, o, http, cache, base);
+    let timeline: Awaited<ReturnType<typeof fetchTimeline>>;
+    try {
+      timeline = await fetchTimeline(group, o, http, cache, session, bootstrap);
+    } catch (e) {
+      if (gi === 0 || !(e instanceof ResearchSourceError)) throw e;
+      errors.push({
+        source: "google-trends",
+        target: group.join(", "),
+        message: e.message,
+      });
+      continue;
+    }
     // sub-daily points need the full timestamp, otherwise they collapse
     const intraday = timeline.some((p) => Number(p.time) % 86400 !== 0);
     const label = (time: string): string => {
