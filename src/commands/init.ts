@@ -260,5 +260,6 @@ export async function runInit(
     throw err;
   }
   io.write(`wrote ${CONFIG_FILE}\n`);
+  io.write("tip: add .mielikki/ to .gitignore (research cache lives there)\n");
   return 0;
 }

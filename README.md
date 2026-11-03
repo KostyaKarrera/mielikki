@@ -2,7 +2,7 @@
 
 Local SEO audit CLI for built static sites. Point it at a build directory (`dist/`) or a running site, get a list of concrete problems with fixes. `check` is deterministic (the same files, or the same server responses, give the same report), has no telemetry and no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at; `perf` loads the pages you name in headless Chrome.
 
-> **Status: pre-1.0 (0.2.0).** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Not included yet, planned for the next release (plan 3): `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those two commands do not exist yet. JavaScript is never executed: Mielikki audits the HTML the server sends.
+> **Status: pre-1.0 (0.2.0).** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Two data commands feed the work around the audit: `research` (Google suggestions, trends, competitor structure; see [docs/research.md](docs/research.md)) and `gsc` (Search Console, read-only, your own OAuth client; see [docs/gsc.md](docs/gsc.md)). JavaScript is never executed: Mielikki audits the HTML the server sends.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
@@ -132,6 +132,35 @@ Requirements: Lighthouse 13 needs Node 22.19 or newer, and Google Chrome (found 
 Flags: `--preset mobile|desktop` (default mobile), `--runs <n>` (median of n runs, default 1), `--chrome-path`, `--no-sandbox`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info` (default error), `--config <path>`.
 
 The numbers are lab metrics from a simulated device and network, not field data from real visitors (that is what Search Console and CrUX report). Unlike `check`, perf output is a measurement: it is not deterministic and differs between runs and machines. Use `--runs 3` or more for steadier medians.
+
+## Research and Search Console
+
+```sh
+npx mielikki research suggest "sähkömies loviisa" --output research/suggest.json
+npx mielikki research trends "sähköasennus" --output research/trends.json
+npx mielikki research competitors https://competitor.example/
+npx mielikki gsc auth --client client.json
+npx mielikki gsc queries --by-target
+npx mielikki gsc inspect --limit 100
+```
+
+`research` writes data files (json, csv or md) for analysis, for example in Claude Code, before you set `targets` in the config; Google Trends is an unofficial source and may stop working. `gsc` reads your own Search Console data (queries, URL Inspection) with an OAuth client you create yourself. Details, limits and setup: [docs/research.md](docs/research.md), [docs/gsc.md](docs/gsc.md). Research output and the cache (`.mielikki/`, add it to `.gitignore`) are local; only `check <dir>` is fully offline.
+
+## Network and privacy
+
+There is no telemetry. Which command talks to whom:
+
+| Command                                  | Hosts contacted                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check <dir>`, `rules`, `init`           | none                                                                                                                                           |
+| `check <url>`                            | the audited site only                                                                                                                          |
+| `perf`                                   | the audited URL (through local Chrome)                                                                                                         |
+| `research suggest`                       | `suggestqueries.google.com`                                                                                                                    |
+| `research trends`                        | `trends.google.com`                                                                                                                            |
+| `research competitors`                   | the sites you give                                                                                                                             |
+| `gsc auth`, `gsc inspect`, `gsc queries` | `accounts.google.com`, `oauth2.googleapis.com`, `searchconsole.googleapis.com`, `www.googleapis.com`, plus your site's sitemap (`gsc inspect`) |
+
+The Search Console token is stored outside the project in `$XDG_CONFIG_HOME/mielikki/` (mode 0600).
 
 ## Exit codes
 
