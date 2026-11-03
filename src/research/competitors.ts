@@ -44,6 +44,7 @@ const SOURCE = "competitors";
 const MAX_SITEMAP_SEEDS = 200;
 const MAX_SITEMAP_FILES = 5;
 const MAX_HEADINGS = 20;
+const MAX_SCHEMA_TYPES = 20;
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 const SERVICE_SEGMENT = /^(palvelu\w*|tjanster|services)$/;
 const AREA_SEGMENT = /^(alue\w*|omraden|areas)$/;
@@ -52,13 +53,13 @@ const byString = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Untrusted text: control characters out, whitespace collapsed, cut to `max`. */
 export function clean(s: string, max = 300): string {
-  return s
+  const t = s
     .replace(/\s+/gu, " ")
-    .replace(/[\p{Cc}\uFFFD]/gu, "")
+    .replace(/[\p{Cc}\p{Cf}\uFFFD]/gu, "")
     .replace(/ {2,}/g, " ")
-    .trim()
-    .slice(0, max)
     .trim();
+  // Cut by code points so a surrogate pair is never split.
+  return Array.from(t).slice(0, max).join("").trim();
 }
 
 /** Lowercase ASCII-ish form for comparing path segments with area names. */
@@ -82,10 +83,13 @@ function decodeSegment(s: string): string {
 function kindOf(pathname: string, hints: string[]): CompetitorPage["kind"] {
   const segs = pathname.split("/").filter(Boolean).map(decodeSegment);
   if (segs.length === 0) return "home";
-  const first = slug(segs[0] as string);
-  if (SERVICE_SEGMENT.test(first)) return "service";
-  if (AREA_SEGMENT.test(first)) return "area";
   const slugs = segs.map(slug);
+  // The leftmost segment that names a service or an area decides.
+  for (const sg of slugs)
+    for (const w of sg.split("-")) {
+      if (SERVICE_SEGMENT.test(w)) return "service";
+      if (AREA_SEGMENT.test(w)) return "area";
+    }
   for (const h of hints) {
     const hs = slug(h);
     if (hs.length >= 3 && slugs.some((s) => s.includes(hs))) return "area";
@@ -107,7 +111,7 @@ function collectTypes(node: unknown, out: Set<string>, depth = 0): void {
   }
   const o = node as Record<string, unknown>;
   const t = o["@type"];
-  for (const v of Array.isArray(t) ? t : [t])
+  for (const v of Array.isArray(t) ? t.slice(0, 50) : [t])
     if (typeof v === "string") {
       const c = clean(v, 100);
       if (c !== "") out.add(c);
@@ -120,7 +124,7 @@ function schemaTypesOf(page: Page): string[] {
   const out = new Set<string>();
   for (const b of page.jsonld)
     if (b.data !== undefined) collectTypes(b.data, out);
-  return [...out].sort(byString);
+  return [...out].sort(byString).slice(0, MAX_SCHEMA_TYPES);
 }
 
 const mediaType = (ct: string | undefined): string =>
@@ -233,12 +237,20 @@ export async function analyzeCompetitor(
   } else if (
     robotsRec.final === undefined ||
     robotsRec.final.status >= 500 ||
-    robotsRec.final.status === 429
+    robotsRec.final.status === 429 ||
+    (robotsRec.final.status >= 300 && robotsRec.final.status < 400)
   ) {
     // Unknown rules: do not crawl.
+    const target = /^redirect to (\S+)/.exec(robotsRec.detail ?? "")?.[1];
+    const host =
+      target !== undefined && URL.canParse(target)
+        ? new URL(target).host
+        : undefined;
     addError(
       robotsUrl,
-      `robots.txt unavailable (${failure(robotsRec) ?? "no answer"}); site not crawled`,
+      host !== undefined && host !== start.host
+        ? `${start.host} redirects to ${host}: pass the canonical URL`
+        : `robots.txt unavailable (${failure(robotsRec) ?? "no answer"}); site not crawled`,
     );
     return report([], [], 0, "done");
   }
@@ -340,40 +352,53 @@ export async function analyzeCompetitor(
       )
         continue;
       const finalUrl = new URL(f.url);
-      seen.add(normalizeCrawlUrl(f.url).url);
-      const page = parsePage(f.body, finalUrl.pathname);
-      const heads = (lvl: 1 | 2): string[] =>
-        page.headings
-          .filter((h) => h.level === lvl)
-          .map((h) => clean(h.text))
-          .filter((t) => t !== "")
-          .slice(0, MAX_HEADINGS);
-      const title = page.title === undefined ? "" : clean(page.title);
-      const h1 = heads(1);
-      const h2 = heads(2);
-      pages.push({
-        url: clean(finalUrl.href, 500),
-        path: clean(finalUrl.pathname, 300),
-        title: title === "" ? null : title,
-        h1,
-        h2,
-        schemaTypes: schemaTypesOf(page),
-        wordCount: page.wordCount,
-        kind: kindOf(finalUrl.pathname, o.areaHints),
-        depth: depthOf.get(url) ?? levelNo,
-      });
-      texts.push({ text: [title, ...h1, ...h2] });
-      for (const l of page.links) {
-        let abs: URL;
-        try {
-          abs = new URL(l.href.trim(), f.url);
-        } catch {
+      const finalNorm = normalizeCrawlUrl(f.url).url;
+      if (finalNorm !== url) {
+        // Same-host redirect: robots.txt applies to where we ended up.
+        if (!allowed(finalUrl)) {
+          addError(url, "redirected to a path disallowed by robots.txt");
           continue;
         }
-        if (abs.origin !== origin) continue;
-        const n = normalizeCrawlUrl(abs.href).url;
-        if (!depthOf.has(n)) depthOf.set(n, levelNo + 1);
-        next.push(n);
+        if (seen.has(finalNorm)) continue;
+        seen.add(finalNorm);
+      }
+      try {
+        const page = parsePage(f.body, finalUrl.pathname);
+        const heads = (lvl: 1 | 2): string[] =>
+          page.headings
+            .filter((h) => h.level === lvl)
+            .map((h) => clean(h.text))
+            .filter((t) => t !== "")
+            .slice(0, MAX_HEADINGS);
+        const title = page.title === undefined ? "" : clean(page.title);
+        const h1 = heads(1);
+        const h2 = heads(2);
+        pages.push({
+          url: clean(finalUrl.href, 500),
+          path: clean(finalUrl.pathname, 300),
+          title: title === "" ? null : title,
+          h1,
+          h2,
+          schemaTypes: schemaTypesOf(page),
+          wordCount: page.wordCount,
+          kind: kindOf(finalUrl.pathname, o.areaHints),
+          depth: depthOf.get(url) ?? levelNo,
+        });
+        texts.push({ text: [title, ...h1, ...h2] });
+        for (const l of page.links) {
+          let abs: URL;
+          try {
+            abs = new URL(l.href.trim(), f.url);
+          } catch {
+            continue;
+          }
+          if (abs.origin !== origin) continue;
+          const n = normalizeCrawlUrl(abs.href).url;
+          if (!depthOf.has(n)) depthOf.set(n, levelNo + 1);
+          next.push(n);
+        }
+      } catch {
+        addError(url, "page could not be analyzed");
       }
     }
     if (stoppedBy !== "done") break;

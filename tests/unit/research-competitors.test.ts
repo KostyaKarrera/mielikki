@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createFetcher } from "../../src/net/fetch.js";
-import { analyzeCompetitor } from "../../src/research/competitors.js";
+import { analyzeCompetitor, clean } from "../../src/research/competitors.js";
 import { scriptedFetcher } from "../support/fake-fetcher.js";
 import {
   type Behaviors,
@@ -23,7 +23,7 @@ const real = (o: { timeoutMs?: number; maxBytes?: number } = {}) =>
     maxHops: 5,
     concurrency: 1,
     delayMs: 0,
-    allowRedirectHost: () => false,
+    allowRedirectHost: (h) => h === "127.0.0.1",
   });
 const opts = { maxPages: 30, language: "fi" as const, areaHints: [] };
 const html = (title: string, body = ""): string =>
@@ -188,5 +188,152 @@ describe("analyzeCompetitor", () => {
     expect(r.pagesAnalyzed).toBe(5);
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0]?.target).toContain("/palvelut/");
+  });
+
+  it("robots is re-checked after a same-host redirect", async () => {
+    server = await serveDir(FX, {
+      redirects: { "/go": { status: 302, location: "/private/secret/" } },
+      dynamic: (p) =>
+        p === "/"
+          ? { body: html("Koti", '<a href="/go">g</a>') }
+          : p === "/sitemap.xml"
+            ? { status: 404, body: "" }
+            : p === "/robots.txt"
+              ? {
+                  type: "text/plain",
+                  body: "User-agent: *\nDisallow: /private/\n",
+                }
+              : undefined,
+    });
+    const r = await analyzeCompetitor(server.url, real(), opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/"]);
+    expect(r.errors.map((e) => e.message)).toContain(
+      "redirected to a path disallowed by robots.txt",
+    );
+    expect(r.terms.map((t) => t.term)).not.toContain("salainen");
+  });
+
+  it("a page whose extraction throws becomes an error entry", async () => {
+    const ok = scriptedFetcher({
+      "http://c.test/": {
+        html: html("Koti", '<a href="/bad/">b</a><a href="/good/">g</a>'),
+      },
+      "http://c.test/good/": { html: html("Good") },
+      "http://c.test/bad/": { html: html("Bad") },
+    });
+    const f = {
+      async get(url: string) {
+        const rec = await ok.get(url);
+        if (url.endsWith("/bad/") && rec.final) {
+          let n = 0;
+          rec.final = {
+            ...rec.final,
+            get body(): string {
+              if (n++ > 0) throw new Error("boom");
+              return "<html></html>";
+            },
+          };
+        }
+        return rec;
+      },
+    };
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/", "/good/"]);
+    expect(r.errors).toEqual([
+      {
+        source: "competitors",
+        target: "http://c.test/bad/",
+        message: "page could not be analyzed",
+      },
+    ]);
+  });
+
+  it("schemaTypes are capped at 20 distinct types of at most 100 chars", async () => {
+    const types = Array.from(
+      { length: 50000 },
+      (_, i) => `T${i}${"x".repeat(200)}`,
+    );
+    const f = scriptedFetcher({
+      "http://c.test/": {
+        html: `<html><head><title>k</title><script type="application/ld+json">${JSON.stringify({ "@type": types })}</script></head><body><h1>k</h1></body></html>`,
+      },
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    const st = r.pages[0]?.schemaTypes ?? [];
+    expect(st).toHaveLength(20);
+    expect(st.every((t) => t.length <= 100)).toBe(true);
+  });
+
+  it("robots answered with a refused redirect names the canonical host", async () => {
+    server = await serveDir(FX, {
+      redirects: {
+        "/robots.txt": {
+          status: 301,
+          location: "http://localhost:9/robots.txt",
+        },
+      },
+    });
+    const r = await analyzeCompetitor(server.url, real(), opts);
+    expect(r.pagesAnalyzed).toBe(0);
+    expect(r.errors[0]?.message).toContain("redirects to localhost:9");
+    expect(r.errors[0]?.message).toContain("pass the canonical URL");
+    expect(server.requests).toEqual(["/robots.txt"]);
+  });
+
+  it("a redirect to an already crawled page does not duplicate it", async () => {
+    const f = scriptedFetcher({
+      "http://c.test/": {
+        html: html("Koti", '<a href="/a/">a</a><a href="/b/">b</a>'),
+      },
+      "http://c.test/a/": { html: html("A") },
+      "http://c.test/b/": {
+        final: {
+          url: "http://c.test/a/",
+          status: 200,
+          headers: { "content-type": "text/html" },
+          contentType: "text/html",
+          bytes: 1,
+          body: html("A"),
+        },
+      },
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/", "/a/"]);
+  });
+
+  it("clean strips format characters and never splits surrogate pairs", () => {
+    expect(clean("a\u202Eb\u200Bc")).toBe("abc");
+    const cut = clean("😀".repeat(400));
+    expect(Array.from(cut)).toHaveLength(300);
+    expect(cut).not.toContain("\uFFFD");
+  });
+
+  it("kind matches service/area words in any segment and hyphenated forms", async () => {
+    const script: Record<string, { html: string }> = {};
+    for (const u of [
+      "/fi/palvelut/",
+      "/palvelut-ja-hinnat/",
+      "/fi/alueet/x/",
+      "/muu/",
+    ])
+      script[`http://c.test${u}`] = { html: html(u) };
+    script["http://c.test/"] = {
+      html: html(
+        "Koti",
+        '<a href="/fi/palvelut/">a</a><a href="/palvelut-ja-hinnat/">b</a><a href="/fi/alueet/x/">c</a><a href="/muu/">d</a>',
+      ),
+    };
+    const r = await analyzeCompetitor(
+      "http://c.test/",
+      scriptedFetcher(script),
+      opts,
+    );
+    const k = Object.fromEntries(r.pages.map((p) => [p.path, p.kind]));
+    expect(k).toMatchObject({
+      "/fi/palvelut/": "service",
+      "/palvelut-ja-hinnat/": "service",
+      "/fi/alueet/x/": "area",
+      "/muu/": "other",
+    });
   });
 });

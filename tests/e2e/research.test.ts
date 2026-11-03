@@ -431,7 +431,7 @@ describe("research competitors", () => {
       csv.io,
     );
     expect(csv.out().split("\n")[0]).toBe(
-      "site,sitemapUrls,pagesAnalyzed,stoppedBy",
+      "site,sitemapUrls,pagesAnalyzed,stoppedBy,notes",
     );
   });
 
@@ -443,5 +443,33 @@ describe("research competitors", () => {
       });
     expect(run([]).status).toBe(2);
     expect(run(["http://x.test", "--max-pages", "0"]).status).toBe(2);
+  });
+
+  it("same-origin duplicates are skipped with a note; md has a Notes column with the first error when nothing was obtained", async () => {
+    server = await serveDir(FX);
+    const h = harness();
+    expect(
+      await runResearchCompetitors(
+        [server.url, `${server.url}/palvelut/`],
+        copts,
+        h.io,
+      ),
+    ).toBe(0);
+    expect(JSON.parse(h.out()).rows).toHaveLength(1);
+    expect(h.err()).toContain("указан повторно");
+
+    const dead = harness();
+    const ok = harness();
+    const md = await runResearchCompetitors(
+      [server.url, "http://127.0.0.1:1/"],
+      { ...copts, format: "md" },
+      ok.io,
+    );
+    expect(md).toBe(0);
+    expect(ok.out()).toContain(
+      "| site | sitemapUrls | pagesAnalyzed | stoppedBy | notes |",
+    );
+    expect(ok.out()).toMatch(/127\.0\.0\.1:1 \| 0 \| 0 \| done \| [^|]+\|/);
+    void dead;
   });
 });

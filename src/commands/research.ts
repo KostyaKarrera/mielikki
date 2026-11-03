@@ -302,12 +302,36 @@ const COMPETITOR_COLUMNS: (keyof CompetitorReport & string)[] = [
   "terms",
   "errors",
 ];
-const COMPETITOR_FLAT_COLUMNS: (keyof CompetitorReport & string)[] = [
+interface FlatCompetitorRow {
+  site: string;
+  sitemapUrls: number;
+  pagesAnalyzed: number;
+  stoppedBy: string;
+  notes: string;
+}
+const COMPETITOR_FLAT_COLUMNS: (keyof FlatCompetitorRow & string)[] = [
   "site",
   "sitemapUrls",
   "pagesAnalyzed",
   "stoppedBy",
+  "notes",
 ];
+
+function flatten(r: CompetitorReport): FlatCompetitorRow {
+  const first = r.errors[0]?.message ?? "";
+  return {
+    site: r.site,
+    sitemapUrls: r.sitemapUrls,
+    pagesAnalyzed: r.pagesAnalyzed,
+    stoppedBy: r.stoppedBy,
+    notes:
+      r.pagesAnalyzed === 0
+        ? first
+        : r.errors.length > 0
+          ? `${r.errors.length} errors`
+          : "",
+  };
+}
 
 export async function runResearchCompetitors(
   urls: string[],
@@ -338,7 +362,8 @@ export async function runResearchCompetitors(
   const areaHints = config.business?.areaServed ?? [];
 
   warn("research competitors: вежливый обход, robots.txt соблюдается");
-  const fetcher =
+  // One fetcher per site: redirects are followed only within that site's host.
+  const fetcherFor = (startUrl: string): Fetcher =>
     deps.fetcher ??
     createFetcher({
       userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
@@ -347,18 +372,21 @@ export async function runResearchCompetitors(
       maxHops: 5,
       concurrency: 1,
       delayMs: opts.delay,
-      // Redirects are never followed to another host.
-      allowRedirectHost: () => false,
+      allowRedirectHost: (h) => h === new URL(startUrl).hostname,
     });
 
   const rows: CompetitorReport[] = [];
   const seenSites = new Set<string>();
   for (const u of starts) {
-    if (seenSites.has(u)) continue;
-    seenSites.add(u);
+    const origin = new URL(u).origin;
+    if (seenSites.has(origin)) {
+      warn(`mielikki: ${origin} указан повторно, второй URL пропущен`);
+      continue;
+    }
+    seenSites.add(origin);
     try {
       rows.push(
-        await analyzeCompetitor(u, fetcher, {
+        await analyzeCompetitor(u, fetcherFor(u), {
           maxPages: opts.maxPages,
           language,
           areaHints,
@@ -417,11 +445,14 @@ export async function runResearchCompetitors(
           },
         }),
   };
-  const text = renderData(
-    file,
-    opts.format,
-    opts.format === "json" ? COMPETITOR_COLUMNS : COMPETITOR_FLAT_COLUMNS,
-  );
+  const text =
+    opts.format === "json"
+      ? renderData(file, "json", COMPETITOR_COLUMNS)
+      : renderData(
+          { ...file, rows: rows.map(flatten) },
+          opts.format,
+          COMPETITOR_FLAT_COLUMNS,
+        );
   if (opts.output) {
     const target = path.resolve(io.cwd, opts.output);
     try {
