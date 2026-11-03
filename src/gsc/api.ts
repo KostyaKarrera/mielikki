@@ -26,7 +26,7 @@ export interface QueryRow {
 /** Quota exhausted (HTTP 429 / quotaExceeded). `done` is filled in by the caller. */
 export class GscQuotaError extends Error {
   constructor(readonly done: number = 0) {
-    super("Search Console: квота исчерпана");
+    super("Search Console: quota exhausted");
     this.name = "GscQuotaError";
   }
 }
@@ -101,7 +101,7 @@ export function createGscClient(
       } catch (err) {
         const m = err instanceof Error ? err.message : "request failed";
         throw new Error(
-          redact(`Не удалось связаться с Search Console (${m.slice(0, 80)})`, [
+          redact(`Could not reach Search Console (${m.slice(0, 80)})`, [
             accessToken,
           ]),
         );
@@ -110,18 +110,20 @@ export function createGscClient(
         try {
           return JSON.parse(res.text);
         } catch {
-          throw new Error("Search Console вернул ответ не в формате JSON");
+          throw new Error(
+            "Search Console returned a response that is not JSON",
+          );
         }
       }
       if (res.status === 401)
         throw new UsageError(
-          "Search Console отклонил доступ (401): выполните mielikki gsc auth",
+          "Search Console rejected access (401): run mielikki gsc auth",
         );
       if (res.status === 429 || (res.status === 403 && isQuotaBody(res.text)))
         throw new GscQuotaError();
       if (res.status === 403)
         throw new UsageError(
-          `Нет доступа к ресурсу ${redact(siteUrl, [accessToken])}: добавьте пользователя в Search Console или укажите --site sc-domain:…`,
+          `No access to the property ${redact(siteUrl, [accessToken])}: add the user in Search Console or give --site sc-domain:…`,
         );
       if (res.status >= 500 && attempt === 0) {
         await sleep(RETRY_DELAY_MS);
@@ -129,8 +131,8 @@ export function createGscClient(
       }
       throw new Error(
         res.status >= 500
-          ? `Search Console временно недоступен (HTTP ${res.status})`
-          : `Search Console отклонил запрос (HTTP ${res.status})`,
+          ? `Search Console is temporarily unavailable (HTTP ${res.status})`
+          : `Search Console rejected the request (HTTP ${res.status})`,
       );
     }
   }

@@ -21,7 +21,7 @@ export interface ClientSecrets {
 }
 
 const DESKTOP_HINT =
-  "создайте в Google Cloud Console OAuth-клиент типа «Desktop app» и скачайте его JSON";
+  "create an OAuth client of type 'Desktop app' in Google Cloud Console and download its JSON";
 
 const AUTH_HOST = "accounts.google.com";
 const TOKEN_HOST = "oauth2.googleapis.com";
@@ -42,7 +42,7 @@ function safeUri(
   }
   if (u?.protocol !== "https:" || u.hostname !== host || u.port !== "")
     throw new UsageError(
-      `Файл клиента: ${name} должен быть https://${host}/…; ${DESKTOP_HINT}`,
+      `Client file: ${name} must be https://${host}/…; ${DESKTOP_HINT}`,
     );
   return s;
 }
@@ -54,7 +54,7 @@ export async function readClientFile(file: string): Promise<ClientSecrets> {
     raw = JSON.parse(await readFile(file, "utf8"));
   } catch {
     throw new UsageError(
-      `Не удалось прочитать файл клиента как JSON; ${DESKTOP_HINT}`,
+      `Could not read the client file as JSON; ${DESKTOP_HINT}`,
     );
   }
   const inst =
@@ -63,12 +63,12 @@ export async function readClientFile(file: string): Promise<ClientSecrets> {
       : undefined;
   if (typeof inst !== "object" || inst === null)
     throw new UsageError(
-      `Файл клиента не в формате «Desktop app»; ${DESKTOP_HINT}`,
+      `The client file is not of type "Desktop app"; ${DESKTOP_HINT}`,
     );
   const i = inst as Record<string, unknown>;
   if (typeof i.client_id !== "string" || typeof i.client_secret !== "string")
     throw new UsageError(
-      `В файле клиента нет client_id/client_secret («Desktop app»); ${DESKTOP_HINT}`,
+      `The client file has no client_id/client_secret ("Desktop app"); ${DESKTOP_HINT}`,
     );
   return {
     clientId: i.client_id,
@@ -125,7 +125,7 @@ async function postToken(
   } catch (err) {
     const m = err instanceof Error ? err.message : "request failed";
     throw new UsageError(
-      redact(`Не удалось связаться с Google (${m.slice(0, 80)})`, secrets),
+      redact(`Could not reach Google (${m.slice(0, 80)})`, secrets),
     );
   }
 }
@@ -173,15 +173,15 @@ function waitForCallback(
       if (req.method !== "GET" || u.pathname !== "/")
         return reply(404, "Not found");
       if (u.searchParams.get("state") !== state)
-        return reply(400, "Неверный state: запрос отклонён.");
+        return reply(400, "Invalid state: request rejected.");
       const error = u.searchParams.get("error");
       const code = u.searchParams.get("code");
-      if (!error && !code) return reply(400, "Нет кода авторизации.");
+      if (!error && !code) return reply(400, "No authorization code.");
       const result: Callback = error
         ? { error: /^[a-z_]{1,40}$/.test(error) ? error : "unknown" }
         : { code: code ?? undefined };
       res.once("close", () => finish(() => resolve(result)));
-      reply(200, "Готово. Можно закрыть вкладку и вернуться в терминал.");
+      reply(200, "Done. You can close this tab and return to the terminal.");
     });
     function finish(then: () => void): void {
       if (settled) return;
@@ -192,9 +192,7 @@ function waitForCallback(
     }
     server.on("error", () =>
       finish(() =>
-        reject(
-          new UsageError("Не удалось запустить локальный сервер для входа"),
-        ),
+        reject(new UsageError("Could not start the local server for sign-in")),
       ),
     );
     server.listen(0, "127.0.0.1", () => {
@@ -202,9 +200,7 @@ function waitForCallback(
         () =>
           finish(() =>
             reject(
-              new UsageError(
-                "Время ожидания входа истекло: повторите mielikki gsc auth",
-              ),
+              new UsageError("Sign-in timed out: run mielikki gsc auth again"),
             ),
           ),
         timeoutMs,
@@ -212,9 +208,7 @@ function waitForCallback(
       try {
         onListening((server.address() as AddressInfo).port);
       } catch {
-        finish(() =>
-          reject(new UsageError("Не удалось показать ссылку для входа")),
-        );
+        finish(() => reject(new UsageError("Could not show the sign-in link")));
       }
     });
   });
@@ -243,14 +237,12 @@ export async function runLoopbackLogin(
       access_type: "offline",
       prompt: "consent",
     }).toString();
-    io.print(
-      `Откройте ссылку в браузере и разрешите доступ:\n${url.toString()}`,
-    );
+    io.print(`Open the link in a browser and allow access:\n${url.toString()}`);
     io.openUrl(url.toString());
   });
   if (cb.error)
     throw new UsageError(
-      `Доступ не выдан (${cb.error}): повторите mielikki gsc auth и разрешите доступ`,
+      `Access was not granted (${cb.error}): run mielikki gsc auth again and allow access`,
     );
   const code = cb.code ?? "";
   const secrets = [c.clientSecret, code, verifier];
@@ -270,22 +262,22 @@ export async function runLoopbackLogin(
   if (res.status < 200 || res.status >= 300) {
     const e = googleError(res.text, secrets);
     throw new UsageError(
-      `Google отклонил обмен кода (HTTP ${res.status}${e ? `, ${e}` : ""})`,
+      `Google rejected the code exchange (HTTP ${res.status}${e ? `, ${e}` : ""})`,
     );
   }
   const t = parseTokens(res.text);
   if (!t.scope.includes(SCOPE))
     throw new UsageError(
-      "Google не выдал доступ webmasters.readonly: повторите mielikki gsc auth и отметьте доступ к Search Console",
+      "Google did not grant webmasters.readonly: run mielikki gsc auth again and tick the Search Console access",
     );
   const broader = t.scope.filter((x) => x !== SCOPE && x !== "");
   if (broader.length > 0)
     io.warn?.(
-      "Предупреждение: Google выдал больше прав, чем запрошено; mielikki использует только чтение Search Console.",
+      "Warning: Google granted more permissions than requested; mielikki only uses read access to Search Console.",
     );
   if (!t.refresh)
     throw new UsageError(
-      "Google не вернул refresh-токен: повторите mielikki gsc auth",
+      "Google did not return a refresh token: run mielikki gsc auth again",
     );
   return {
     clientId: c.clientId,
@@ -324,14 +316,14 @@ export async function refreshAccess(
     const e = googleError(res.text, secrets);
     if (e === "invalid_grant")
       throw new UsageError(
-        "Доступ отозван или истёк: выполните mielikki gsc auth",
+        "Access was revoked or has expired: run mielikki gsc auth",
       );
     throw new UsageError(
-      `Google отклонил обновление токена (HTTP ${res.status}${e ? `, ${e}` : ""})`,
+      `Google rejected the token refresh (HTTP ${res.status}${e ? `, ${e}` : ""})`,
     );
   }
   const p = parseTokens(res.text);
-  if (!p.access) throw new UsageError("Google не вернул access-токен");
+  if (!p.access) throw new UsageError("Google did not return an access token");
   return { access: p.access, scope: p.scope };
 }
 
@@ -356,7 +348,7 @@ export async function loadAdc(
   } catch {
     if (explicit)
       throw new UsageError(
-        "GOOGLE_APPLICATION_CREDENTIALS: файл не читается или не JSON",
+        "GOOGLE_APPLICATION_CREDENTIALS: the file is unreadable or not JSON",
       );
     return undefined;
   }
@@ -366,10 +358,10 @@ export async function loadAdc(
   >;
   if (o.type !== "authorized_user")
     throw new UsageError(
-      "ADC: поддерживается только тип authorized_user (gcloud auth application-default login); сервисные аккаунты не подходят",
+      "ADC: only the authorized_user type is supported (gcloud auth application-default login); service accounts do not work",
     );
   if (typeof o.client_id !== "string" || typeof o.refresh_token !== "string")
-    throw new UsageError("ADC: в файле нет client_id/refresh_token");
+    throw new UsageError("ADC: the file has no client_id/refresh_token");
   return {
     clientId: o.client_id,
     ...(typeof o.client_secret === "string"

@@ -239,6 +239,6 @@ describe("api_error_messages", () => {
     const e = await run([{ status: 400, text: `bad ${TOKEN}` }]).catch(
       (x) => x,
     );
-    expect(e.message).toBe("Search Console отклонил запрос (HTTP 400)");
+    expect(e.message).toBe("Search Console rejected the request (HTTP 400)");
   });
 });

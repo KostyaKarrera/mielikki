@@ -13,7 +13,7 @@ Read-only access to your own Google Search Console data: `auth`, `inspect` (URL 
 
 Mielikki rejects a client JSON whose `auth_uri` is not on `accounts.google.com` or whose `token_uri` is not `oauth2.googleapis.com` (a security check: the token exchange must go to Google).
 
-**Refresh tokens expire after 7 days in Testing mode.** Verified in Google's OAuth 2.0 documentation (https://developers.google.com/identity/protocols/oauth2, checked 2026-11-03): a project with an external consent screen in the "Testing" status gets a refresh token that expires in 7 days (unless only the openid, email and profile scopes are requested, which is not the case here). Run `gsc auth` again when the commands report that access is gone, or publish the consent screen (for a sensitive scope this may require Google verification).
+**Refresh tokens expire after 7 days in Testing mode.** Verified in Google's OAuth 2.0 documentation (https://developers.google.com/identity/protocols/oauth2, checked 2026-11-03): a project with an external consent screen in the "Testing" status gets a refresh token that expires in 7 days (unless only the openid, email and profile scopes are requested, which is not the case here). This applies to your own OAuth client in Testing mode, not to a token from gcloud (`--adc`). Run `gsc auth` again when the commands report that access is gone, or move the consent screen to production; Google's consent-screen help (https://support.google.com/cloud/answer/13463073, checked 2026-11-03) says an app requesting sensitive scopes must go through OAuth app verification before it is granted access, and that verification may be required before publishing in general. Mielikki does not need any of this for personal use in Testing mode.
 
 ### Alternative: Application Default Credentials
 
@@ -25,7 +25,7 @@ gcloud auth application-default login \
 mielikki gsc auth --adc
 ```
 
-`--adc` copies gcloud's refresh token into Mielikki's own store (0600). The scope is verified; if `webmasters.readonly` is missing you get the command above. The copy goes stale if you log in with gcloud again; repeat `gsc auth --adc`.
+`inspect` and `queries` also fall back to ADC on their own when no token is stored (`GOOGLE_APPLICATION_CREDENTIALS` or the gcloud file), without a prior `gsc auth --adc`; in that case nothing is copied into Mielikki's store. `--adc` copies gcloud's refresh token into Mielikki's own store (0600). The scope is verified; if `webmasters.readonly` is missing you get the command above. The copy goes stale if you log in with gcloud again; repeat `gsc auth --adc`.
 
 ## Where the token lives
 
@@ -41,7 +41,7 @@ URL Inspection for the pages of your sitemap (`/sitemap.xml` of `config.site`, s
 
 - `--limit <n>` (default 200, at most 2000) caps the pages; the rest are reported as not checked.
 - **Quotas.** Per Google's Search Console API usage limits (https://developers.google.com/webmaster-tools/limits, checked 2026-11-03), the URL Inspection API allows 2,000 queries per day and 600 per minute per site (property), and 10,000,000 per day and 15,000 per minute per project. Mielikki paces itself at about 10 requests a second and stops at the first quota answer.
-- On a quota stop the rows collected so far are still written, the exit code is 1; the quota resets daily. Five consecutive failures (5xx or network) also stop the run (exit 1).
+- On a quota stop the rows collected so far are still written and the exit code is 1. The limits are per day; Google's limits page does not state the exact reset time, so retry the next day. Five consecutive failures (5xx or network) stop the run. Any failed request (listed in `errors`) makes the exit code 1, even if the run finishes.
 
 ## `gsc queries`
 
@@ -52,7 +52,7 @@ Search Analytics rows (`query`, `page`, `clicks`, `impressions`, `ctr`, `positio
 
 ### `--by-target`
 
-Matches the queries to `targets.pages` and writes one row per target with columns `target`, `primary`, `status`, `queries`, `impressions`, `clicks`, `bestPosition`, `topQueries` (top 5), `otherPages` (up to 3). It has no `matched` list and no `errors`. `status`:
+Matches the queries to `targets.pages` and writes one row per target with columns `target`, `primary`, `status`, `queries`, `impressions`, `clicks`, `bestPosition`, `topQueries` (top 5), `otherPages` (up to 3). The json file keeps `kind: gsc-queries` and an `errors` array that is always empty; the per-query `matched` list is dropped. `status`:
 
 - `ranking`: matched queries were shown with the target page itself.
 - `other-page`: queries match, but only other pages of the site ranked for them (candidate for cannibalization or a missing page).

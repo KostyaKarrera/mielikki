@@ -259,7 +259,7 @@ describe("scope checks and robustness", () => {
     let warned = "";
     const t = await login(c, { warn: (s: string) => (warned += s) });
     expect(t.refreshToken).toBe("r-tok-123456");
-    expect(warned).toContain("больше прав");
+    expect(warned).toContain("more permissions");
   });
   it("a throwing print rejects and closes the server", async () => {
     const c = await start(ok);
@@ -286,7 +286,7 @@ describe("scope checks and robustness", () => {
       },
     });
     await new Promise((r) => setTimeout(r, 100));
-    expect(body).toContain("Готово");
+    expect(body).toContain("Done.");
   });
 });
 

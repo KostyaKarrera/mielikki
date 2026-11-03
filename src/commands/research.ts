@@ -63,7 +63,7 @@ export async function runResearchSuggest(
 ): Promise<number> {
   const warn = io.warn ?? (() => {});
   if (seeds.length === 0 && !opts.fromConfig) {
-    warn("mielikki: укажите основы или --from-config");
+    warn("mielikki: give seed phrases or use --from-config");
     return 2;
   }
   const config = await loadConfig(io.cwd, opts.config);
@@ -76,7 +76,7 @@ export async function runResearchSuggest(
   ];
   if (unique.length === 0) {
     warn(
-      "mielikki: укажите основы или --from-config (в конфиге нет targets.pages)",
+      "mielikki: give seed phrases or use --from-config (the config has no targets.pages)",
     );
     return 2;
   }
@@ -190,7 +190,7 @@ export async function runResearchTrends(
     ...new Set(terms.map((s) => s.normalize("NFC").trim()).filter(Boolean)),
   ];
   if (unique.length === 0) {
-    warn("mielikki: укажите хотя бы один термин");
+    warn("mielikki: give at least one term");
     return 2;
   }
   const config = await loadConfig(io.cwd, opts.config);
@@ -341,7 +341,7 @@ export async function runResearchCompetitors(
 ): Promise<number> {
   const warn = io.warn ?? (() => {});
   if (urls.length === 0) {
-    warn("mielikki: укажите хотя бы один URL сайта конкурента");
+    warn("mielikki: give at least one competitor site URL");
     return 2;
   }
   const starts: string[] = [];
@@ -361,7 +361,7 @@ export async function runResearchCompetitors(
     );
   const areaHints = config.business?.areaServed ?? [];
 
-  warn("research competitors: вежливый обход, robots.txt соблюдается");
+  warn("research competitors: polite crawl, robots.txt is always obeyed");
   // The Fetcher never follows redirects here; analyzeCompetitor does, hop by hop.
   const fetcher: Fetcher =
     deps.fetcher ??
@@ -381,7 +381,7 @@ export async function runResearchCompetitors(
   for (const u of starts) {
     const origin = new URL(u).origin;
     if (seenSites.has(origin)) {
-      warn(`mielikki: ${origin} указан повторно, второй URL пропущен`);
+      warn(`mielikki: ${origin} was given twice, the second URL is skipped`);
       continue;
     }
     seenSites.add(origin);
@@ -419,7 +419,7 @@ export async function runResearchCompetitors(
       ...new Set(rows.flatMap((r) => r.errors.map((e) => e.message))),
     ].slice(0, 3);
     warn(
-      `mielikki: ни с одного сайта не получено страниц: ${msgs.join("; ") || "нет ответа"}`.slice(
+      `mielikki: no pages fetched from any site: ${msgs.join("; ") || "no response"}`.slice(
         0,
         200,
       ),

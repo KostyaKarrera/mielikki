@@ -42,7 +42,7 @@ All commands send a `Mielikki/<version>` user agent with a link to the project, 
 Google Suggest autocomplete (`suggestqueries.google.com`) for seed phrases: `suggest <seeds...>` or `--from-config` (every `primary` and `secondary` of `targets.pages`). Rows: `seed`, `expansion`, `query`, `rank`.
 
 - `--expand none|alphabet|questions|both` (default `alphabet`): `alphabet` appends each letter a-z (plus å, ä, ö for Finnish and Swedish) to the seed; `questions` prepends question words of the language (for Finnish `miten`, `mikä`, `paljonko`, `kuinka paljon`, `mitä maksaa`, `kuka`, `missä`).
-- `--hl` and `--gl` default to the config `language` and `region`; `--delay <ms>` between requests (400).
+- `--hl` and `--gl` default to the config `language` and `region` (`--gl` falls back to `hl` when no region is configured); `--delay <ms>` between requests (400).
 - Local queries give sparse data: `sähkömies porvoo` returns about two suggestions. Do not expect volumes from Suggest; bet on long "service + town" queries and use the suggestions as phrasing ideas.
 - After 5 consecutive 429/503 answers the remaining requests are skipped (reported in `errors`). If every request fails, the command exits 1.
 
@@ -65,4 +65,5 @@ Structure of competitor sites: `competitors <url...>`. It is a polite crawler. *
 - `--language fi|sv|en` selects the stemmer for `terms` (default: config language).
 - The json report per site holds `sitemapUrls`, `pagesAnalyzed`, `stoppedBy` (`done` or `max-pages`), `urlPatterns` (path patterns with counts), `pages` (url, title, H1/H2, `schemaTypes`, word count, `kind`: home/service/area/other, depth), `terms` (stems found across pages) and `errors`.
 - `csv` and `md` flatten each site to one row (`site`, `sitemapUrls`, `pagesAnalyzed`, `stoppedBy`, `notes`); `notes` holds the first error if no page was fetched, or the number of errors. Use json for the detail.
+- The top-level `errors` of a competitors file is always `[]`; errors are per site, inside each row.
 - Exit 1 if no page could be fetched from any site.

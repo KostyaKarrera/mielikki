@@ -125,7 +125,7 @@ describe("gsc auth", () => {
     expect(
       await runGscAuth(opts, { ...h.io, write: (s) => (o2 += s) }, { http }),
     ).toBe(0);
-    expect(o2).toMatch(/уже авторизовано/i);
+    expect(o2).toMatch(/already authorized/i);
   });
 
   it("no leakage when the token endpoint echoes the request body", async () => {
@@ -257,7 +257,7 @@ describe("gsc auth", () => {
     const h = harness();
     expect(await runGscAuth({ ...opts, logout: true }, h.io)).toBe(0);
     expect(h.out()).toContain("myaccount.google.com/permissions");
-    expect(h.out()).toContain("или его не было");
+    expect(h.out()).toContain("or there was none");
   });
 
   it("CLI: gsc auth without args exits 2", () => {
@@ -367,7 +367,7 @@ describe("gsc inspect and queries", () => {
       ["/a/", "/b/", "/c/", "/d/"].map((p) => srv.url + p),
     );
     expect(file.rows[1].verdict).toBe("NEUTRAL");
-    expect(h.err()).toContain("проверено 4 из 4");
+    expect(h.err()).toContain("inspected 4 of 4");
     expect(h.err()).toContain("NEUTRAL 1");
     expect(h.err()).toContain("PASS 3");
     expect(h.err()).toContain(`${srv.url}/b/`);
@@ -409,9 +409,7 @@ describe("gsc inspect and queries", () => {
     expect(code).toBe(1);
     const file = JSON.parse(readFileSync(path.join(h.tmp, "p.json"), "utf8"));
     expect(file.rows).toHaveLength(2);
-    expect(h.err()).toContain(
-      "проверено 2 из 4; квота обновляется раз в сутки",
-    );
+    expect(h.err()).toContain("inspected 2 of 4; the quota resets daily");
     noLeak(h.out() + h.err());
   });
 
@@ -421,7 +419,7 @@ describe("gsc inspect and queries", () => {
       body: `{"error":"${ACCESS}"}`,
     }));
     expect(await runGscInspect(inspectOpts, io, deps)).toBe(2);
-    expect(h.err()).toContain("Нет доступа к ресурсу");
+    expect(h.err()).toContain("No access to the property");
     noLeak(h.out() + h.err());
 
     const h2 = harness();
@@ -538,7 +536,7 @@ describe("gsc inspect and queries", () => {
     ]);
     expect(JSON.parse(h.out()).rows).toHaveLength(30000);
     expect(h.err()).toContain(
-      "данные усечены до 30000 строк; увеличьте --row-limit (максимум 25000 на запрос, пагинация до 100000)",
+      "data truncated to 30000 rows; raise --row-limit (at most 25000 per request, paginated up to 100000)",
     );
   });
 
@@ -552,7 +550,7 @@ describe("gsc inspect and queries", () => {
     }));
     expect(await runGscQueries(queryOpts, io, deps)).toBe(0);
     expect(srv.gscLog).toHaveLength(1);
-    expect(h.err()).not.toContain("усечены");
+    expect(h.err()).not.toContain("truncated");
   });
 
   it("by-target names the competing URLs in otherPages", async () => {
@@ -592,12 +590,12 @@ describe("gsc inspect and queries", () => {
       ctx.n === 2 ? { status: 429, body: "{}" } : { body: indexed("PASS") },
     );
     expect(await runGscInspect({ ...inspectOpts, limit: 3 }, io, deps)).toBe(1);
-    expect(h.err()).toContain("проверено 1 из 3");
-    expect(h.err()).not.toContain("из 4");
-    expect(h.err()).toContain("Ещё 1 страниц не проверено из-за --limit 3");
+    expect(h.err()).toContain("inspected 1 of 3");
+    expect(h.err()).not.toContain("of 4");
     expect(h.err()).toContain(
-      "проверено 1 из 3; квота обновляется раз в сутки",
+      "1 more pages not inspected because of --limit 3",
     );
+    expect(h.err()).toContain("inspected 1 of 3; the quota resets daily");
   });
 
   it("inspect: 5xx is retried after a pause; 5 consecutive failures abort with a partial file", async () => {
@@ -617,7 +615,7 @@ describe("gsc inspect and queries", () => {
     const file = JSON.parse(readFileSync(path.join(h.tmp, "f.json"), "utf8"));
     expect(file.rows).toHaveLength(1);
     expect(file.errors).toHaveLength(5);
-    expect(h.err()).toContain("прервано после 5 ошибок подряд");
+    expect(h.err()).toContain("stopped after 5 consecutive failures");
     // each failing URL: 2 attempts (one retry) -> 1 + 5*2 calls, far fewer than 12 URLs
     expect(srv.gscLog).toHaveLength(11);
     expect(sleeps.filter((m) => m >= 100).length).toBeGreaterThanOrEqual(5);
@@ -635,7 +633,7 @@ describe("gsc inspect and queries", () => {
     expect(code).toBe(2);
     const file = JSON.parse(readFileSync(path.join(h.tmp, "m.json"), "utf8"));
     expect(file.rows).toHaveLength(2);
-    expect(h.err()).toContain("Нет доступа к ресурсу");
+    expect(h.err()).toContain("No access to the property");
   });
 
   it("inspect: sitemap children on another port are not requested", async () => {

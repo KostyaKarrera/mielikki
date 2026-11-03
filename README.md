@@ -150,15 +150,17 @@ npx mielikki gsc inspect --limit 100
 
 There is no telemetry. Which command talks to whom:
 
-| Command                                  | Hosts contacted                                                                                                                                |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `check <dir>`, `rules`, `init`           | none                                                                                                                                           |
-| `check <url>`                            | the audited site only                                                                                                                          |
-| `perf`                                   | the audited URL (through local Chrome)                                                                                                         |
-| `research suggest`                       | `suggestqueries.google.com`                                                                                                                    |
-| `research trends`                        | `trends.google.com`                                                                                                                            |
-| `research competitors`                   | the sites you give                                                                                                                             |
-| `gsc auth`, `gsc inspect`, `gsc queries` | `accounts.google.com`, `oauth2.googleapis.com`, `searchconsole.googleapis.com`, `www.googleapis.com`, plus your site's sitemap (`gsc inspect`) |
+| Command                        | Hosts contacted                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `check <dir>`, `rules`, `init` | none (offline)                                                                                           |
+| `check <url>`                  | the audited site only                                                                                    |
+| `perf`                         | the audited URL (through local Chrome)                                                                   |
+| `research suggest`             | `suggestqueries.google.com`                                                                              |
+| `research trends`              | `trends.google.com`                                                                                      |
+| `research competitors`         | the sites you give (each site's pages, robots.txt and sitemap, same host)                                |
+| `gsc auth`                     | `accounts.google.com` (opened in your browser), `oauth2.googleapis.com`, a local 127.0.0.1 listener      |
+| `gsc inspect`                  | `oauth2.googleapis.com`, `searchconsole.googleapis.com`, your own site's sitemap (with `--from sitemap`) |
+| `gsc queries`                  | `oauth2.googleapis.com`, `www.googleapis.com`                                                            |
 
 The Search Console token is stored outside the project in `$XDG_CONFIG_HOME/mielikki/` (mode 0600).
 

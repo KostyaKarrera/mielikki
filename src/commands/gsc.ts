@@ -62,13 +62,13 @@ export interface GscDeps {
 }
 
 const HELP = [
-  "Нет сохранённого доступа к Search Console. Варианты:",
-  "  1. mielikki gsc auth --client client.json — OAuth-клиент типа «Desktop app»",
-  "     (Google Cloud Console: APIs & Services, включить Search Console API,",
-  "     Credentials, Create OAuth client ID, Desktop app, скачать JSON).",
-  "  2. mielikki gsc auth --adc — Application Default Credentials",
-  "     (gcloud auth application-default login с scope webmasters.readonly).",
-  "Подробнее: docs/gsc.md.",
+  "No stored Search Console access. Options:",
+  "  1. mielikki gsc auth --client client.json - an OAuth client of type 'Desktop app'",
+  "     (Google Cloud Console: APIs & Services, enable the Search Console API,",
+  "     Credentials, Create OAuth client ID, Desktop app, download the JSON).",
+  "  2. mielikki gsc auth --adc - Application Default Credentials",
+  "     (gcloud auth application-default login with the webmasters.readonly scope).",
+  "Details: docs/gsc.md.",
 ].join("\n");
 
 const defaultHttp = (): HttpJson =>
@@ -86,15 +86,13 @@ export async function runGscAuth(
   const file = tokenPath(io.env ?? process.env, io.home ?? os.homedir());
   try {
     if (o.adc && o.client)
-      throw new UsageError("Укажите либо --adc, либо --client, не оба сразу");
+      throw new UsageError("Give either --adc or --client, not both");
     if (o.logout) {
       const had = await loadToken(file);
       await clearToken(file);
       io.write(
-        `Локальный токен удалён (или его не было); доступ остаётся выдан, пока вы не отзовёте его на myaccount.google.com/permissions.${
-          had?.source === "adc"
-            ? " Собственная копия gcloud (ADC) не затронута."
-            : ""
+        `Local token deleted (or there was none); the grant stays valid until you revoke it at myaccount.google.com/permissions.${
+          had?.source === "adc" ? " gcloud's own copy (ADC) is untouched." : ""
         }\n`,
       );
       return 0;
@@ -103,7 +101,7 @@ export async function runGscAuth(
       const t = await loadAdc(io.env ?? process.env, io.home ?? os.homedir());
       if (!t)
         throw new UsageError(
-          "ADC не найдены: выполните gcloud auth application-default login или задайте GOOGLE_APPLICATION_CREDENTIALS",
+          "ADC not found: run gcloud auth application-default login or set GOOGLE_APPLICATION_CREDENTIALS",
         );
       const http = deps.http ?? defaultHttp();
       const r = await refreshAccess(
@@ -113,10 +111,10 @@ export async function runGscAuth(
       );
       if (!r.scope.includes(SCOPE))
         throw new UsageError(
-          `В ADC нет доступа webmasters.readonly: gcloud auth application-default login --scopes=${SCOPE},https://www.googleapis.com/auth/cloud-platform`,
+          `ADC lacks the webmasters.readonly scope: gcloud auth application-default login --scopes=${SCOPE},https://www.googleapis.com/auth/cloud-platform`,
         );
       await saveToken(file, t);
-      io.write("Авторизовано (источник adc).\n");
+      io.write("Authorized (source adc).\n");
       return 0;
     }
     if (o.client) {
@@ -135,12 +133,12 @@ export async function runGscAuth(
         http,
       );
       await saveToken(file, t);
-      io.write("Авторизовано (источник oauth-client).\n");
+      io.write("Authorized (source oauth-client).\n");
       return 0;
     }
     const existing = await loadToken(file);
     if (existing) {
-      io.write(`Уже авторизовано (источник ${existing.source}).\n`);
+      io.write(`Already authorized (source ${existing.source}).\n`);
       return 0;
     }
     warn(HELP);
@@ -150,7 +148,7 @@ export async function runGscAuth(
       warn(`mielikki: ${err.message.split("\n")[0]}`);
       return 2;
     }
-    warn("mielikki: не удалось выполнить gsc auth");
+    warn("mielikki: gsc auth failed");
     return 2;
   }
 }
@@ -281,7 +279,7 @@ async function writeOutput(
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     warn(
-      `mielikki: не удалось записать ${output}${typeof code === "string" ? ` (${code})` : ""}`,
+      `mielikki: cannot write ${output}${typeof code === "string" ? ` (${code})` : ""}`,
     );
     return false;
   }
@@ -333,7 +331,7 @@ async function collectSitemapUrls(
     if (!info?.ok) {
       if (first)
         throw new UsageError(
-          `Не удалось получить sitemap ${site.origin}/sitemap.xml: проверьте config.site или используйте --from targets`,
+          `Could not fetch the sitemap ${site.origin}/sitemap.xml: check config.site or use --from targets`,
         );
       continue;
     }
@@ -376,7 +374,7 @@ export async function runGscInspect(
     const config = await loadConfig(io.cwd, o.config);
     if (!config.site)
       throw new UsageError(
-        "Задайте site в конфиге: адрес сайта нужен для списка страниц",
+        "Set site in the config: the site address is needed for the page list",
       );
     const site = new URL(config.site);
     const siteUrl = o.site ?? `${config.site.replace(/\/+$/, "")}/`;
@@ -408,7 +406,7 @@ export async function runGscInspect(
       urls = await collectSitemapUrls(site, fetcher);
     }
     if (urls.length === 0)
-      throw new UsageError("Нет страниц для проверки (пустой список URL)");
+      throw new UsageError("No pages to inspect (the URL list is empty)");
     const total = urls.length;
     urls = urls.slice(0, o.limit);
 
@@ -481,32 +479,32 @@ export async function runGscInspect(
       .map(([v, n]) => `${clean(v)} ${n}`)
       .join(", ");
     warn(
-      `gsc inspect: проверено ${rows.length} из ${urls.length}${counts ? ` (${counts})` : ""}`,
+      `gsc inspect: inspected ${rows.length} of ${urls.length}${counts ? ` (${counts})` : ""}`,
     );
     const notIndexed = rows.filter((r) => r.verdict !== "PASS");
     if (notIndexed.length > 0) {
-      warn(`Не в индексе или с замечаниями: ${notIndexed.length}`);
+      warn(`Not indexed or with issues: ${notIndexed.length}`);
       for (const r of notIndexed.slice(0, 10))
         warn(`  ${r.verdict} ${clean(r.url)} (${clean(r.coverageState)})`);
     }
     if (total > urls.length)
       warn(
-        `Ещё ${total - urls.length} страниц не проверено из-за --limit ${o.limit}`,
+        `${total - urls.length} more pages not inspected because of --limit ${o.limit}`,
       );
     if (quota) {
       warn(
-        `mielikki: проверено ${quota.done} из ${urls.length}; квота обновляется раз в сутки`,
+        `mielikki: inspected ${quota.done} of ${urls.length}; the quota resets daily`,
       );
       return 1;
     }
     if (aborted) {
       warn(
-        `mielikki: прервано после ${MAX_CONSECUTIVE_FAILURES} ошибок подряд; проверено ${rows.length} из ${urls.length}`,
+        `mielikki: stopped after ${MAX_CONSECUTIVE_FAILURES} consecutive failures; inspected ${rows.length} of ${urls.length}`,
       );
       return 1;
     }
     if (errors.length > 0) {
-      warn(`${errors.length} запросов не удались (см. errors в данных)`);
+      warn(`${errors.length} requests failed (see errors in the data)`);
       return 1;
     }
     return 0;
@@ -534,8 +532,7 @@ export async function runGscQueries(
     const config = await loadConfig(io.cwd, o.config);
     const siteUrl =
       o.site ?? (config.site ? `${config.site.replace(/\/+$/, "")}/` : "");
-    if (!siteUrl)
-      throw new UsageError("Укажите --site или задайте site в конфиге");
+    if (!siteUrl) throw new UsageError("Give --site or set site in the config");
     const access = await resolveAccess(io, deps);
     secrets = access.secrets;
 
@@ -572,12 +569,12 @@ export async function runGscQueries(
       }
     } catch (e) {
       if (e instanceof GscQuotaError) {
-        warn("mielikki: квота Search Console исчерпана; повторите позже");
+        warn("mielikki: Search Console quota exhausted; try again later");
         return 1;
       }
       if (e instanceof UsageError) throw e;
       warn(
-        `mielikki: ${clean(redact(e instanceof Error ? e.message : "запрос не удался", secrets))}`,
+        `mielikki: ${clean(redact(e instanceof Error ? e.message : "request failed", secrets))}`,
       );
       return 1;
     }
@@ -621,7 +618,7 @@ export async function runGscQueries(
       for (const c of cov)
         if (c.status !== "ranking")
           warn(
-            `${c.status === "no-data" ? "Нет данных" : "Только другие страницы"}: ${clean(c.target)} («${clean(c.primary)}»)`,
+            `${c.status === "no-data" ? "No data" : "Only other pages"}: ${clean(c.target)} ("${clean(c.primary)}")`,
           );
     } else {
       text = renderData(
@@ -634,10 +631,10 @@ export async function runGscQueries(
       return 2;
     if (rows.length >= o.rowLimit)
       warn(
-        `данные усечены до ${o.rowLimit} строк; увеличьте --row-limit (максимум ${PAGE_SIZE} на запрос, пагинация до ${MAX_ROW_LIMIT})`,
+        `data truncated to ${o.rowLimit} rows; raise --row-limit (at most ${PAGE_SIZE} per request, paginated up to ${MAX_ROW_LIMIT})`,
       );
     warn(
-      `gsc queries: строк ${rows.length} (${params.startDate} — ${params.endDate})`,
+      `gsc queries: ${rows.length} rows (${params.startDate} to ${params.endDate})`,
     );
     return 0;
   } catch (err) {

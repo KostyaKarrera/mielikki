@@ -56,7 +56,7 @@ describe("research suggest", () => {
   it("suggest_exit_codes", async () => {
     const h = harness();
     expect(await runResearchSuggest([], base, h.io)).toBe(2);
-    expect(h.err()).toContain("укажите основы или --from-config");
+    expect(h.err()).toContain("give seed phrases or use --from-config");
 
     server = await serveDir("tests/fixtures/research", {
       suggest: (q) =>
@@ -176,7 +176,7 @@ targets:
       });
     const a = run([]);
     expect(a.status).toBe(2);
-    expect(a.stderr).toContain("укажите основы или --from-config");
+    expect(a.stderr).toContain("give seed phrases or use --from-config");
     expect(run(["x", "--expand", "nope"]).status).toBe(2);
     expect(run(["x", "--delay", "-1"]).status).toBe(2);
   });
@@ -262,7 +262,7 @@ describe("research trends", () => {
   it("trends_exit_codes_and_output", async () => {
     const h = harness();
     expect(await runResearchTrends([], topts, h.io)).toBe(2);
-    expect(h.err()).toContain("укажите хотя бы один термин");
+    expect(h.err()).toContain("give at least one term");
 
     server = await serveDir("tests/fixtures/research", { trends });
     const h2 = harness();
@@ -353,7 +353,7 @@ describe("research competitors", () => {
     const h = harness();
     expect(await runResearchCompetitors([server.url], copts, h.io)).toBe(0);
     expect(h.err()).toBe(
-      "research competitors: вежливый обход, robots.txt соблюдается\n",
+      "research competitors: polite crawl, robots.txt is always obeyed\n",
     );
     const f = JSON.parse(h.out());
     expect(f.kind).toBe("competitors");
@@ -375,7 +375,7 @@ describe("research competitors", () => {
     });
     const h = harness();
     expect(await runResearchCompetitors([server.url], copts, h.io)).toBe(1);
-    expect(h.err()).toContain("ни с одного сайта не получено страниц");
+    expect(h.err()).toContain("no pages fetched from any site");
     expect(h.err()).toContain("blocked by robots.txt");
     expect(h.out()).toBe("");
   });
@@ -456,7 +456,7 @@ describe("research competitors", () => {
       ),
     ).toBe(0);
     expect(JSON.parse(h.out()).rows).toHaveLength(1);
-    expect(h.err()).toContain("указан повторно");
+    expect(h.err()).toContain("was given twice");
 
     const dead = harness();
     const ok = harness();
