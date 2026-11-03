@@ -6,6 +6,7 @@ import {
   Option,
 } from "commander";
 import { runCheck } from "./commands/check.js";
+import { runGscAuth } from "./commands/gsc.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
 import {
@@ -353,6 +354,39 @@ export function buildProgram(): Command {
         },
         {
           cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  const gsc = program
+    .command("gsc")
+    .description("Google Search Console (read-only)")
+    .exitOverride();
+  gsc
+    .command("auth")
+    .description(
+      "Authorize read-only access (sends requests to accounts.google.com and oauth2.googleapis.com)",
+    )
+    .option("--client <path>", "OAuth client JSON of type Desktop app")
+    .option("--adc", "use Application Default Credentials (authorized_user)")
+    .option("--logout", "delete the stored token")
+    .option("--no-open", "only print the link, do not open a browser")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscAuth(
+        {
+          client: o.client,
+          adc: o.adc === true,
+          logout: o.logout === true,
+          noOpen: o.open === false,
+        },
+        {
           write: (s) => {
             process.stdout.write(s);
           },

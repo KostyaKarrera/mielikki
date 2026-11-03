@@ -27,6 +27,11 @@ export interface Behaviors {
     type?: string;
     body: string;
   };
+  /** Handler for POST /token (fake OAuth token endpoint); gets the parsed form body. */
+  oauth?: (form: URLSearchParams) => {
+    status?: number;
+    body: string;
+  };
   /** Dynamic pages (checked first): return undefined to fall through to files. */
   dynamic?: (pathname: string) =>
     | {
@@ -54,6 +59,8 @@ export interface TestServer {
   trendsLog: string[];
   /** Cookie header of every /trends/api/* call ("" when absent). */
   trendsCookies: string[];
+  /** Parsed form body of every POST /token call, in arrival order. */
+  oauthLog: URLSearchParams[];
 }
 
 const TYPES: Record<string, string> = {
@@ -84,6 +91,7 @@ export async function serveDir(
   const suggestLog: string[] = [];
   const trendsLog: string[] = [];
   const trendsCookies: string[] = [];
+  const oauthLog: URLSearchParams[] = [];
   const timers = new Set<NodeJS.Timeout>();
 
   const handle = async (
@@ -113,6 +121,20 @@ export async function serveDir(
       if (res.destroyed) return;
       res.writeHead(r.status ?? 200, {
         "content-type": r.type ?? "application/json; charset=utf-8",
+        "content-length": String(Buffer.byteLength(r.body)),
+      });
+      res.end(r.body);
+      return;
+    }
+
+    if (pathname === "/token" && req.method === "POST" && b.oauth) {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+      oauthLog.push(form);
+      const r = b.oauth(form);
+      res.writeHead(r.status ?? 200, {
+        "content-type": "application/json; charset=utf-8",
         "content-length": String(Buffer.byteLength(r.body)),
       });
       res.end(r.body);
@@ -240,6 +262,7 @@ export async function serveDir(
     suggestLog,
     trendsLog,
     trendsCookies,
+    oauthLog,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);

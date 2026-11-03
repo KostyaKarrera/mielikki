@@ -8,6 +8,12 @@ export interface HttpJson {
     body: unknown,
     o?: { headers?: Record<string, string> },
   ): Promise<{ status: number; text: string }>;
+  /** application/x-www-form-urlencoded POST (OAuth token endpoint). */
+  postForm(
+    url: string,
+    form: Record<string, string>,
+    o?: { headers?: Record<string, string> },
+  ): Promise<{ status: number; text: string }>;
 }
 
 const MAX_HOPS = 3;
@@ -132,6 +138,17 @@ export function createHttpJson(o: {
         url,
         { method: "POST", body: JSON.stringify(body) },
         { "content-type": "application/json", ...(opts?.headers ?? {}) },
+      );
+      return { status: r.status, text: r.text };
+    },
+    async postForm(url, form, opts) {
+      const r = await request(
+        url,
+        { method: "POST", body: new URLSearchParams(form).toString() },
+        {
+          "content-type": "application/x-www-form-urlencoded",
+          ...(opts?.headers ?? {}),
+        },
       );
       return { status: r.status, text: r.text };
     },

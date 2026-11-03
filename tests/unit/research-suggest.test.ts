@@ -318,6 +318,7 @@ describe("runSuggest", () => {
         throw new Error(`network: ${"x".repeat(500)}`);
       },
       postJson: async () => ({ status: 200, text: "" }),
+      postForm: async () => ({ status: 200, text: "" }),
     };
     const f = await runSuggest(
       { seeds: ["a"], hl: "fi", gl: "fi", expand: "none", delayMs: 0 },
