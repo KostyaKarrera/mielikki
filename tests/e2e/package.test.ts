@@ -76,6 +76,8 @@ describe("package", () => {
       ].sort(),
     );
     expect(paths).toContain("dist/cli.js");
+    expect(paths).toContain("dist/parse/child.js"); // the parse subprocess entry
+    expect(paths).not.toContain("dist/parse/worker.js");
     expect(paths).toContain("vendor/schemaorg-all-https.jsonld");
     expect(
       paths.some((p) => /^(src|tests|docs|\.mielikki|\.superpowers)\//.test(p)),
@@ -103,6 +105,23 @@ describe("package", () => {
     const r = spawnSync("node", [bin, "rules"], { encoding: "utf8" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("core/title-missing");
+    // pages are parsed in the packaged subprocess entry (dist/parse/child.js)
+    const c = spawnSync(
+      "node",
+      [
+        bin,
+        "check",
+        path.resolve("tests/fixtures/sites/good"),
+        "--format",
+        "json",
+      ],
+      { encoding: "utf8" },
+    );
+    expect(c.stderr).not.toMatch(/not found at|Internal error/);
+    expect([0, 1]).toContain(c.status);
+    expect(
+      (JSON.parse(c.stdout) as { summary: { pages: number } }).summary.pages,
+    ).toBeGreaterThan(0);
   });
 
   it("dist stays git-ignored", () => {

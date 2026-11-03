@@ -507,7 +507,7 @@ describe("loadUrl deep nesting", () => {
 describe("loadUrl unparseable pages", () => {
   const b = Array.from({ length: 1400 }, (_, i) => `<b a${i}>`).join("");
   const blowup = `<div>${b}${"</div><div>x".repeat(3000)}`;
-  it("a page the worker cannot parse is recorded and the crawl continues", async () => {
+  it("a page the parse subprocess cannot parse is recorded and the crawl continues", async () => {
     const { site } = await crawl(
       {
         [`${O}/`]: html(

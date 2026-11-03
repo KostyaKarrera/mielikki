@@ -546,7 +546,7 @@ describe("analyzeCompetitor Crawl-delay", () => {
 });
 
 describe("analyzeCompetitor unparseable pages", () => {
-  it("competitors_skips_page_the_worker_cannot_parse", async () => {
+  it("competitors_skips_page_the_parser_cannot_parse", async () => {
     const b = Array.from({ length: 1400 }, (_, i) => `<b a${i}>`).join("");
     const f = scriptedFetcher({
       "http://c.test/": {

@@ -4,7 +4,7 @@
  * parse5 (inside cheerio) is quadratic on deeply nested unclosed block tags.
  * The scan is a cheap tolerant tokenizer, not a parser, and sloppy but real
  * markup (`<li><a>x</li>`) makes it over-count. It never refuses a page;
- * parsePageSafe uses it to name the finding (too-deep) when the worker gives up.
+ * parsePageSafe uses it to name the finding (too-deep) when the subprocess gives up.
  */
 
 /** Maximum nesting depth Mielikki parses; deeper pages are refused. */
@@ -74,7 +74,7 @@ const COMMENT_END = /--!?>/g;
  * Maximum open-element depth. A construct that never terminates (comment,
  * quote, tag, raw text) ends the scan early with what was counted so far: the
  * page is then not proven shallow, which is why untrusted pages additionally
- * go through the time- and memory-limited worker (parsePageSafe).
+ * go through the time- and memory-limited subprocess (parsePageSafe).
  *
  * Only a closing tag that matches an open element pops (like the HTML parser,
  * which ignores stray end tags).

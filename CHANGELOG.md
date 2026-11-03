@@ -23,5 +23,5 @@ First stable release. The rule catalogue now has 110 rules (list: [docs/rules.md
 
 - No telemetry. Only `check <dir>`, `rules` and `init` work fully offline; every other command contacts the hosts listed in the README section "Network and privacy".
 - JavaScript is never executed: Mielikki audits the HTML the server sends.
-- Pages that cannot be parsed within bounded time and memory (hostile or pathological HTML) are reported as findings (`crawl/page-too-deep`, `crawl/page-unparseable`) instead of hanging or crashing the run, in directory and URL modes; `research competitors` records an error and continues. HTML is parsed in a worker thread with limits scaled to the page size.
+- Pages that cannot be parsed within bounded time and memory (hostile or pathological HTML) are reported as findings (`crawl/page-too-deep`, `crawl/page-unparseable`) instead of hanging or crashing the run, in directory and URL modes; `research competitors` records an error and continues. HTML is parsed in an isolated subprocess with time and heap limits scaled to the page size, so even a fatal V8 out-of-memory only ends that subprocess (Node 22 and 24).
 - Requires Node.js 22.12 or newer.

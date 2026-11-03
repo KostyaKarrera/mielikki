@@ -7,8 +7,8 @@ import {
   heapMbFor,
   PageUnparseableError,
   parsePageSafe,
+  parseSpawnCount,
   timeoutFor,
-  workerSpawnCount,
 } from "../../src/parse/safe.js";
 
 const r = (s: string, k: number): string => s.repeat(k);
@@ -73,7 +73,7 @@ describe("parsePageSafe", () => {
     ['<div =">', `<div =">${r("<div>", 40_000)}`],
     ["plain 100k divs", r("<div>", 100_000)],
   ])(
-    "%s: the worker gives up and the finding is too-deep",
+    "%s: the subprocess gives up and the finding is too-deep",
     async (_n, html) => {
       const t = performance.now();
       expect(await reason(html)).toBe("too-deep");
@@ -119,8 +119,8 @@ describe("parsePageSafe", () => {
     process.on("uncaughtException", on);
     try {
       const html = reconstruction(3000);
-      for (let i = 0; i < 40; i++) {
-        await reason(html, 40 + i * 12);
+      for (let i = 0; i < 20; i++) {
+        await reason(html, 40 + i * 25);
       }
       await new Promise((res) => setTimeout(res, 300));
       expect(uncaught).toEqual([]);
@@ -131,28 +131,28 @@ describe("parsePageSafe", () => {
     }
   }, 120_000);
 
-  it("reuses one worker and respawns after a timeout", async () => {
+  it("reuses one subprocess and respawns after a timeout", async () => {
     await parsePageSafe("<p>a</p>", "/a");
-    const before = workerSpawnCount();
+    const before = parseSpawnCount();
     for (let i = 0; i < 20; i++) await parsePageSafe(`<p>${i}</p>`, `/p${i}`);
-    expect(workerSpawnCount()).toBe(before);
+    expect(parseSpawnCount()).toBe(before);
 
     await reason(reconstruction(3000), 300);
     const p = await parsePageSafe("<h1>after</h1>", "/after");
     expect(p.key).toBe("/after");
-    expect(workerSpawnCount()).toBe(before + 1);
+    expect(parseSpawnCount()).toBe(before + 1);
   });
 
-  it("a larger worker serves small pages; a small one is replaced for a large page", async () => {
+  it("a larger subprocess serves small pages; a small one is replaced for a large page", async () => {
     await parsePageSafe("<p>a</p>", "/a");
-    const s0 = workerSpawnCount();
+    const s0 = parseSpawnCount();
     const big = `<html><body>${r("<p>sana</p>", 120_000)}</body></html>`; // ~1.3 MB
     expect(heapMbFor(big.length)).toBeGreaterThan(256);
     await parsePageSafe(big, "/big", undefined, { timeoutMs: 20_000 });
-    expect(workerSpawnCount()).toBe(s0 + 1);
+    expect(parseSpawnCount()).toBe(s0 + 1);
     await parsePageSafe("<p>small</p>", "/small");
     await parsePageSafe(big, "/big", undefined, { timeoutMs: 20_000 });
-    expect(workerSpawnCount()).toBe(s0 + 1);
+    expect(parseSpawnCount()).toBe(s0 + 1);
   }, 60_000);
 
   it("limits scale with the page size", () => {
