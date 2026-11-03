@@ -1,7 +1,13 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "../config/load.js";
+import { createFetcher, type Fetcher } from "../net/fetch.js";
+import { parseStartUrl } from "../net/policy.js";
 import { createDiskCache, nullCache } from "../research/cache.js";
+import {
+  analyzeCompetitor,
+  type CompetitorReport,
+} from "../research/competitors.js";
 import { createHttpJson, type HttpJson } from "../research/http.js";
 import { renderData } from "../research/output.js";
 import { runSuggest, type SuggestRow } from "../research/suggest.js";
@@ -38,6 +44,7 @@ export interface ResearchDeps {
   baseUrl?: string;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
+  fetcher?: Fetcher;
 }
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -271,6 +278,164 @@ export async function runResearchTrends(
         .join("; ")
         .slice(0, 200),
     );
+  }
+  return 0;
+}
+
+export interface ResearchCompetitorsOptions {
+  config?: string;
+  maxPages: number;
+  delay: number;
+  language?: "fi" | "sv" | "en";
+  format: "json" | "csv" | "md";
+  output?: string;
+  noMeta: boolean;
+}
+
+const COMPETITOR_COLUMNS: (keyof CompetitorReport & string)[] = [
+  "site",
+  "sitemapUrls",
+  "pagesAnalyzed",
+  "stoppedBy",
+  "urlPatterns",
+  "pages",
+  "terms",
+  "errors",
+];
+const COMPETITOR_FLAT_COLUMNS: (keyof CompetitorReport & string)[] = [
+  "site",
+  "sitemapUrls",
+  "pagesAnalyzed",
+  "stoppedBy",
+];
+
+export async function runResearchCompetitors(
+  urls: string[],
+  opts: ResearchCompetitorsOptions,
+  io: ResearchIO,
+  deps: ResearchDeps = {},
+): Promise<number> {
+  const warn = io.warn ?? (() => {});
+  if (urls.length === 0) {
+    warn("mielikki: укажите хотя бы один URL сайта конкурента");
+    return 2;
+  }
+  const starts: string[] = [];
+  for (const u of urls) {
+    try {
+      starts.push(parseStartUrl(u).href);
+    } catch (e) {
+      warn(`mielikki: ${(e as Error).message.slice(0, 200)}`);
+      return 2;
+    }
+  }
+  const config = await loadConfig(io.cwd, opts.config);
+  const language =
+    opts.language ??
+    (["fi", "sv", "en"] as const).find(
+      (l) => l === config.language?.toLowerCase().split(/[-_]/)[0],
+    );
+  const areaHints = config.business?.areaServed ?? [];
+
+  warn("research competitors: вежливый обход, robots.txt соблюдается");
+  const fetcher =
+    deps.fetcher ??
+    createFetcher({
+      userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
+      timeoutMs: 15000,
+      maxBytes: 2_000_000,
+      maxHops: 5,
+      concurrency: 1,
+      delayMs: opts.delay,
+      // Redirects are never followed to another host.
+      allowRedirectHost: () => false,
+    });
+
+  const rows: CompetitorReport[] = [];
+  const seenSites = new Set<string>();
+  for (const u of starts) {
+    if (seenSites.has(u)) continue;
+    seenSites.add(u);
+    try {
+      rows.push(
+        await analyzeCompetitor(u, fetcher, {
+          maxPages: opts.maxPages,
+          language,
+          areaHints,
+        }),
+      );
+    } catch (e) {
+      rows.push({
+        site: new URL(u).origin,
+        sitemapUrls: 0,
+        pagesAnalyzed: 0,
+        stoppedBy: "done",
+        urlPatterns: [],
+        pages: [],
+        terms: [],
+        errors: [
+          {
+            source: "competitors",
+            target: u.slice(0, 200),
+            message: (e instanceof Error ? e.message : "failed").slice(0, 200),
+          },
+        ],
+      });
+    }
+  }
+  rows.sort((a, b) => (a.site < b.site ? -1 : a.site > b.site ? 1 : 0));
+
+  if (rows.every((r) => r.pagesAnalyzed === 0)) {
+    const msgs = [
+      ...new Set(rows.flatMap((r) => r.errors.map((e) => e.message))),
+    ].slice(0, 3);
+    warn(
+      `mielikki: ни с одного сайта не получено страниц: ${msgs.join("; ") || "нет ответа"}`.slice(
+        0,
+        200,
+      ),
+    );
+    return 1;
+  }
+
+  const file = {
+    kind: "competitors" as const,
+    rows,
+    errors: [],
+    ...(opts.noMeta
+      ? {}
+      : {
+          meta: {
+            generatedAt: (deps.now ?? (() => new Date()))().toISOString(),
+            version: VERSION,
+            params: {
+              maxPages: opts.maxPages,
+              delay: opts.delay,
+              sites: rows.length,
+              ...(language ? { language } : {}),
+            },
+          },
+        }),
+  };
+  const text = renderData(
+    file,
+    opts.format,
+    opts.format === "json" ? COMPETITOR_COLUMNS : COMPETITOR_FLAT_COLUMNS,
+  );
+  if (opts.output) {
+    const target = path.resolve(io.cwd, opts.output);
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, text);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      warn(
+        `mielikki: cannot write ${opts.output}${typeof code === "string" ? ` (${code})` : ""}`,
+      );
+      return 2;
+    }
+  } else {
+    io.write(text);
   }
   return 0;
 }

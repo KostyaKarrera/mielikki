@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  runResearchCompetitors,
   runResearchSuggest,
   runResearchTrends,
 } from "../../src/commands/research.js";
@@ -335,5 +336,112 @@ describe("research trends", () => {
       encoding: "utf8",
     });
     expect(r.status).toBe(2);
+  });
+});
+
+describe("research competitors", () => {
+  const FX = "tests/fixtures/research/competitor-site";
+  const copts = {
+    maxPages: 30,
+    delay: 0,
+    format: "json" as const,
+    noMeta: true,
+  };
+
+  it("competitors_no_own_site_warning: one notice line, exit 0, uniform file", async () => {
+    server = await serveDir(FX);
+    const h = harness();
+    expect(await runResearchCompetitors([server.url], copts, h.io)).toBe(0);
+    expect(h.err()).toBe(
+      "research competitors: вежливый обход, robots.txt соблюдается\n",
+    );
+    const f = JSON.parse(h.out());
+    expect(f.kind).toBe("competitors");
+    expect(f.rows).toHaveLength(1);
+    expect(f.rows[0].pagesAnalyzed).toBe(6);
+    expect(f.errors).toEqual([]);
+    expect(f.meta).toBeUndefined();
+    const again = harness();
+    await runResearchCompetitors([server.url], copts, again.io);
+    expect(again.out()).toBe(h.out());
+  });
+
+  it("robots Disallow: / gives exit 1 and a clear message", async () => {
+    server = await serveDir(FX, {
+      dynamic: (p) =>
+        p === "/robots.txt"
+          ? { type: "text/plain", body: "User-agent: *\nDisallow: /\n" }
+          : undefined,
+    });
+    const h = harness();
+    expect(await runResearchCompetitors([server.url], copts, h.io)).toBe(1);
+    expect(h.err()).toContain("ни с одного сайта не получено страниц");
+    expect(h.err()).toContain("blocked by robots.txt");
+    expect(h.out()).toBe("");
+  });
+
+  it("one site fails, another works: exit 0, error kept in the row", async () => {
+    server = await serveDir(FX);
+    const h = harness();
+    const dead = "http://127.0.0.1:1/";
+    const code = await runResearchCompetitors([server.url, dead], copts, h.io);
+    expect(code).toBe(0);
+    const rows = JSON.parse(h.out()).rows;
+    expect(rows).toHaveLength(2);
+    expect(
+      rows.find((r: { pagesAnalyzed: number }) => r.pagesAnalyzed === 0),
+    ).toBeDefined();
+  });
+
+  it("usage errors give exit 2; unwritable --output gives exit 2", async () => {
+    const a = harness();
+    expect(await runResearchCompetitors([], copts, a.io)).toBe(2);
+    const b = harness();
+    expect(await runResearchCompetitors(["ftp://x"], copts, b.io)).toBe(2);
+    server = await serveDir(FX);
+    const c = harness();
+    writeFileSync(path.join(c.io.cwd, "blocker"), "x");
+    expect(
+      await runResearchCompetitors(
+        [server.url],
+        { ...copts, output: "blocker/out.json" },
+        c.io,
+      ),
+    ).toBe(2);
+    expect(c.err()).toContain("cannot write blocker/out.json");
+    expect(c.err()).not.toMatch(/\n\s+at /);
+  });
+
+  it("areaServed from config marks pages as area; csv has flat columns", async () => {
+    server = await serveDir(FX);
+    const h = harness();
+    writeFileSync(
+      path.join(h.io.cwd, "mielikki.config.yaml"),
+      "language: fi\nbusiness:\n  type: service-area\n  schemaType: Electrician\n  name: X\n  areaServed: [Yhteystiedot]\n",
+    );
+    expect(await runResearchCompetitors([server.url], copts, h.io)).toBe(0);
+    const pages = JSON.parse(h.out()).rows[0].pages;
+    expect(
+      pages.find((p: { path: string }) => p.path === "/yhteystiedot/").kind,
+    ).toBe("area");
+    const csv = harness();
+    await runResearchCompetitors(
+      [server.url],
+      { ...copts, format: "csv" },
+      csv.io,
+    );
+    expect(csv.out().split("\n")[0]).toBe(
+      "site,sitemapUrls,pagesAnalyzed,stoppedBy",
+    );
+  });
+
+  it("CLI: no url exits 2, bad --max-pages exits 2", () => {
+    const run = (args: string[]) =>
+      spawnSync("node", [CLI, "research", "competitors", ...args], {
+        encoding: "utf8",
+        cwd: os.tmpdir(),
+      });
+    expect(run([]).status).toBe(2);
+    expect(run(["http://x.test", "--max-pages", "0"]).status).toBe(2);
   });
 });

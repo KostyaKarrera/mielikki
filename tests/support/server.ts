@@ -27,6 +27,15 @@ export interface Behaviors {
     type?: string;
     body: string;
   };
+  /** Dynamic pages (checked first): return undefined to fall through to files. */
+  dynamic?: (pathname: string) =>
+    | {
+        status?: number;
+        type?: string;
+        body: string;
+        headers?: Record<string, string>;
+      }
+    | undefined;
   extra?: Record<
     string,
     { type: string; body: string | Buffer; stream?: "endless" | "stall" }
@@ -121,6 +130,17 @@ export async function serveDir(
         ...r.headers,
       });
       res.end(r.body);
+      return;
+    }
+
+    const dyn = b.dynamic?.(pathname);
+    if (dyn) {
+      res.writeHead(dyn.status ?? 200, {
+        "content-type": dyn.type ?? "text/html; charset=utf-8",
+        "content-length": String(Buffer.byteLength(dyn.body)),
+        ...dyn.headers,
+      });
+      res.end(dyn.body);
       return;
     }
 

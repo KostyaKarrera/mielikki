@@ -8,7 +8,11 @@ import {
 import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
-import { runResearchSuggest, runResearchTrends } from "./commands/research.js";
+import {
+  runResearchCompetitors,
+  runResearchSuggest,
+  runResearchTrends,
+} from "./commands/research.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -293,6 +297,59 @@ export function buildProgram(): Command {
           noMeta: o.meta === false,
           refresh: o.refresh === true,
           noCache: o.cache === false,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  research
+    .command("competitors")
+    .description(
+      "Structure of competitor sites: pages, headings, schema, URL patterns (polite crawl of the given sites, robots.txt always obeyed)",
+    )
+    .argument("<url...>", "competitor site start URLs")
+    .option("--max-pages <n>", "pages per site (30)", int(true, 1000), 30)
+    .option(
+      "--delay <ms>",
+      "pause between requests (500)",
+      int(false, MAX_MS),
+      500,
+    )
+    .addOption(
+      new Option("--language <code>", "stemming language for terms").choices([
+        "fi",
+        "sv",
+        "en",
+      ]),
+    )
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (urls: string[], o) => {
+      process.exitCode = await runResearchCompetitors(
+        urls,
+        {
+          config: o.config,
+          maxPages: o.maxPages,
+          delay: o.delay,
+          language: o.language,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
         },
         {
           cwd: process.cwd(),
