@@ -29,6 +29,7 @@
 | crawl/noindex | error | yes | crawl/page | https://developers.google.com/search/docs/crawling-indexing/block-indexing |
 | crawl/noindex-expected-missing | warning | no | crawl/page | https://developers.google.com/search/docs/crawling-indexing/block-indexing |
 | crawl/orphan | warning | no | crawl/site | mielikki:original |
+| crawl/page-too-deep | error | yes | crawl/site | mielikki:original |
 | crawl/robots-blocks-all | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/robots/intro |
 | crawl/robots-blocks-assets | warning | no | crawl/site | https://developers.google.com/search/docs/crawling-indexing/robots/intro |
 | crawl/robots-blocks-page | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/robots/intro |

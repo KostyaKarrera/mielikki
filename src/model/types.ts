@@ -128,5 +128,7 @@ export interface Site {
   origin?: string; // crawl host (URL mode)
   responses?: Map<string, FetchRecord>; // URL mode
   /** URL mode: `skipped` lists every discovered URL that was not requested, sorted. */
+  /** Pages refused before parsing (nested deeper than MAX_NESTING). */
+  unparsed?: { url: string; depth: number }[];
   crawl?: { limitReached: boolean; skipped: string[] };
 }

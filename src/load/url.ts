@@ -10,7 +10,7 @@ import {
   normalizeCrawlUrl,
   parseStartUrl,
 } from "../net/policy.js";
-import { parsePage } from "../parse/page.js";
+import { PageTooDeepError, parsePage } from "../parse/page.js";
 import { parseRobots, type RobotsInfo } from "../parse/robots.js";
 import type { SitemapInfo } from "../parse/sitemap.js";
 import {
@@ -65,7 +65,10 @@ function xRobotsTokens(header: string | undefined): string[] {
   return out;
 }
 
-function pageFrom(rec: FetchRecord): Page | undefined {
+function pageFrom(
+  rec: FetchRecord,
+  unparsed: { url: string; depth: number }[],
+): Page | undefined {
   const f = rec.final;
   if (
     f === undefined ||
@@ -74,7 +77,14 @@ function pageFrom(rec: FetchRecord): Page | undefined {
     !HTML_TYPES.has(mediaType(f.contentType ?? f.headers["content-type"]))
   )
     return undefined;
-  const page = parsePage(f.body, pageKey(new URL(f.url).pathname));
+  let page: Page;
+  try {
+    page = parsePage(f.body, pageKey(new URL(f.url).pathname));
+  } catch (e) {
+    if (!(e instanceof PageTooDeepError)) throw e;
+    unparsed.push({ url: f.url, depth: e.depth });
+    return undefined;
+  }
   page.status = f.status;
   page.headers = f.headers;
   page.url = f.url;
@@ -168,6 +178,7 @@ export async function loadUrl(
   const skipped = new Set<string>();
   let limitReached = false;
   const pages = new Map<string, Page>();
+  const unparsed: { url: string; depth: number }[] = [];
 
   // A start URL that ends up on another origin (http -> https, apex -> www,
   // another port) would make every link look off-host: refuse, naming the target.
@@ -260,7 +271,7 @@ export async function loadUrl(
         // redirect (links/redirected), not a crawled page.
         if (new URL(rec.final.url).origin !== crawlOrigin) return;
         seen.add(normalizeCrawlUrl(rec.final.url).url);
-        const page = pageFrom(rec);
+        const page = pageFrom(rec, unparsed);
         if (page === undefined || pages.has(page.key)) return;
         pages.set(page.key, page);
         for (const l of page.links) {
@@ -294,6 +305,7 @@ export async function loadUrl(
     inlinks,
     inlinksAll,
     depth,
+    ...(unparsed.length > 0 ? { unparsed } : {}),
     origin: crawlOrigin,
     responses,
     crawl: {

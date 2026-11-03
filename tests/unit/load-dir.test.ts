@@ -19,6 +19,15 @@ describe("loadDir", () => {
     expect(site.pages.map((p) => p.key)).toEqual(["/", "/a/", "/b/", "/c/"]);
   });
 
+  it("page nested too deeply is skipped and recorded, others load", async () => {
+    const site = await siteFrom({
+      "index.html": '<main><a href="/deep/">d</a></main>',
+      "deep/index.html": `<main>${"<div>".repeat(100_000)}</main>`,
+    });
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(site.unparsed).toEqual([{ url: "deep/index.html", depth: 100_001 }]);
+  });
+
   it("404 separated", async () => {
     const site = await siteFrom({
       "index.html": "<p>x</p>",

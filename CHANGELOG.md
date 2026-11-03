@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [1.0.0]
 
-First stable release. The rule catalogue now has 108 rules (list: [docs/rules.md](docs/rules.md)); 23 of them are specific to URL mode (16 `http/*`) and `perf` (7 `perf/*`).
+First stable release. The rule catalogue now has 109 rules (list: [docs/rules.md](docs/rules.md)); 23 of them are specific to URL mode (16 `http/*`) and `perf` (7 `perf/*`).
 
 ### Added
 
@@ -23,4 +23,5 @@ First stable release. The rule catalogue now has 108 rules (list: [docs/rules.md
 
 - No telemetry. Only `check <dir>`, `rules` and `init` work fully offline; every other command contacts the hosts listed in the README section "Network and privacy".
 - JavaScript is never executed: Mielikki audits the HTML the server sends.
+- Pages nested deeper than 1500 elements are not parsed (a parser slowdown protection); `check` reports them as `crawl/page-too-deep`, and `research competitors` records an error and continues.
 - Requires Node.js 22.12 or newer.

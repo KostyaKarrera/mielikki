@@ -6,7 +6,7 @@ import {
   normalizeCrawlUrl,
   parseStartUrl,
 } from "../net/policy.js";
-import { parsePage } from "../parse/page.js";
+import { PageTooDeepError, parsePage } from "../parse/page.js";
 import { parseRobots, type RobotsInfo } from "../parse/robots.js";
 import { parseSitemap } from "../parse/sitemap.js";
 import type { ResearchError } from "./types.js";
@@ -450,8 +450,13 @@ export async function analyzeCompetitor(
           if (!depthOf.has(n)) depthOf.set(n, levelNo + 1);
           next.push(n);
         }
-      } catch {
-        addError(url, "page could not be analyzed");
+      } catch (e) {
+        addError(
+          url,
+          e instanceof PageTooDeepError
+            ? e.message
+            : "page could not be analyzed",
+        );
       }
     }
     if (stoppedBy !== "done") break;

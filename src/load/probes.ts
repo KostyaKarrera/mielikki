@@ -1,9 +1,9 @@
 import { isLocalHost } from "../model/host.js";
-import type { Asset, FetchRecord, Site } from "../model/types.js";
+import type { Asset, FetchRecord, Page, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import type { Fetcher } from "../net/fetch.js";
 import { isAssetPath } from "../net/policy.js";
-import { parsePage } from "../parse/page.js";
+import { PageTooDeepError, parsePage } from "../parse/page.js";
 
 export const NOT_FOUND_PROBE = "/__mielikki_404__/";
 const MAX_SLASH_PROBES = 10;
@@ -151,7 +151,13 @@ export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
     f.body?.trim() &&
     HTML_TYPES.has(ct.split(";")[0]?.trim().toLowerCase() ?? "")
   ) {
-    const page = parsePage(f.body, pageKey(NOT_FOUND_PROBE));
+    let page: Page;
+    try {
+      page = parsePage(f.body, pageKey(NOT_FOUND_PROBE));
+    } catch (e) {
+      if (e instanceof PageTooDeepError) return; // judged without the parsed body
+      throw e;
+    }
     page.status = f.status;
     page.headers = f.headers;
     page.url = f.url;

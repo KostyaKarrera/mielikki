@@ -4,7 +4,7 @@ import type { Config } from "../config/schema.js";
 import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
-import { parsePage } from "../parse/page.js";
+import { PageTooDeepError, parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
 import {
   buildSiteGraph,
@@ -61,10 +61,18 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
   const pages: Page[] = [];
   let notFound: Page | undefined;
   const assets = new Map<string, Asset>();
+  const unparsed: { url: string; depth: number }[] = [];
   for (const rel of files) {
     if (HTML.test(rel)) {
       const html = await readFile(path.join(root, rel), "utf8");
-      const page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
+      let page: Page;
+      try {
+        page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
+      } catch (e) {
+        if (!(e instanceof PageTooDeepError)) throw e;
+        unparsed.push({ url: rel, depth: e.depth });
+        continue;
+      }
       if (NOT_FOUND.test(rel)) notFound ??= page;
       else pages.push(page);
     } else {
@@ -105,6 +113,7 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
     // exclude.ignore: not checked, but kept in byKey/inlinks/depth so links resolve.
     pages: unique.filter((p) => !isIgnored(config, p.key)),
     notFound,
+    ...(unparsed.length > 0 ? { unparsed } : {}),
     robots,
     sitemaps,
     assets,

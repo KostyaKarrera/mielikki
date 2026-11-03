@@ -4,6 +4,7 @@ import { rule as depth } from "./depth.js";
 import { rule as noindex } from "./noindex.js";
 import { rule as noindexExpectedMissing } from "./noindex-expected-missing.js";
 import { rule as orphan } from "./orphan.js";
+import { rule as pageTooDeep } from "./page-too-deep.js";
 import { rule as robotsBlocksAll } from "./robots-blocks-all.js";
 import { rule as robotsBlocksAssets } from "./robots-blocks-assets.js";
 import { rule as robotsBlocksPage } from "./robots-blocks-page.js";
@@ -23,6 +24,7 @@ export const crawlRules: Rule[] = [
   noindex,
   noindexExpectedMissing,
   orphan,
+  pageTooDeep,
   robotsBlocksAll,
   robotsBlocksAssets,
   robotsBlocksPage,

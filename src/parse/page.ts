@@ -9,6 +9,8 @@ import type {
   Resource,
 } from "../model/types.js";
 
+import { MAX_NESTING, maxOpenDepth } from "./depth.js";
+
 const CHROME_TAGS = ["header", "nav", "footer"];
 const CHROME = CHROME_TAGS.join(", ");
 const NON_CONTENT = ["script", "style", "noscript", "template"];
@@ -168,7 +170,17 @@ function parseResources($: CheerioAPI): Resource[] {
   return out;
 }
 
+/** The page nests elements deeper than MAX_NESTING and was not parsed. */
+export class PageTooDeepError extends Error {
+  constructor(readonly depth: number) {
+    super(`page too deeply nested (${depth} > ${MAX_NESTING})`);
+    this.name = "PageTooDeepError";
+  }
+}
+
 export function parsePage(html: string, key: string, file?: string): Page {
+  const depth = maxOpenDepth(html);
+  if (depth > MAX_NESTING) throw new PageTooDeepError(depth);
   const $ = load(html.replace(/^\uFEFF/, ""));
 
   const titles = $("title");

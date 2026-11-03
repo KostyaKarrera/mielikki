@@ -440,3 +440,24 @@ describe("analyzeCompetitor", () => {
     }
   });
 });
+
+describe("analyzeCompetitor deep nesting", () => {
+  it("competitors_skips_too_deep_page_and_continues", async () => {
+    const f = scriptedFetcher({
+      "http://c.test/": {
+        html: html("Koti", '<a href="/deep/">d</a><a href="/ok/">o</a>'),
+      },
+      "http://c.test/deep/": {
+        html: `<html><body>${"<div>".repeat(100_000)}</body></html>`,
+      },
+      "http://c.test/ok/": { html: html("Ok") },
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/", "/ok/"]);
+    expect(r.errors).toContainEqual(
+      expect.objectContaining({
+        message: "page too deeply nested (100002 > 1500)",
+      }),
+    );
+  });
+});

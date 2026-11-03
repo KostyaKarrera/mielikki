@@ -5,6 +5,7 @@ import { rule as depth } from "../../../src/rules/crawl/depth.js";
 import { rule as noindex } from "../../../src/rules/crawl/noindex.js";
 import { rule as noindexExpectedMissing } from "../../../src/rules/crawl/noindex-expected-missing.js";
 import { rule as orphan } from "../../../src/rules/crawl/orphan.js";
+import { rule as pageTooDeep } from "../../../src/rules/crawl/page-too-deep.js";
 import { rule as robotsBlocksAll } from "../../../src/rules/crawl/robots-blocks-all.js";
 import { rule as robotsBlocksAssets } from "../../../src/rules/crawl/robots-blocks-assets.js";
 import { rule as robotsBlocksPage } from "../../../src/rules/crawl/robots-blocks-page.js";
@@ -44,7 +45,7 @@ describe("crawl rules registry", () => {
     const c = allRules
       .map((r) => r.meta.id)
       .filter((i) => i.startsWith("crawl/"));
-    expect(c).toHaveLength(17);
+    expect(c).toHaveLength(18);
     expect(c).toEqual([...c].sort());
   });
 });
@@ -637,5 +638,21 @@ describe("exclude.ignore in sitemap rules", () => {
       exclude: { noindexExpected: [], ignore: ["/a/"] },
     });
     expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+  });
+});
+
+describe("crawl/page-too-deep", () => {
+  it("reports pages that were refused before parsing", async () => {
+    const site = await siteFrom({
+      "index.html": doc("", a("/deep/")),
+      "deep/index.html": `<main>${"<div>".repeat(5000)}</main>`,
+    });
+    const f = await runRule(pageTooDeep, site);
+    expect(f.map((x) => x.url)).toEqual(["deep/index.html"]);
+    expect(f[0]?.message).toContain("page too deeply nested (5001 > 1500)");
+    expect(f[0]?.severity).toBe("error");
+  });
+  it("is silent on normal sites", async () => {
+    expect(await ids(pageTooDeep, twoPages)).toEqual([]);
   });
 });
