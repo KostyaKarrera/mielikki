@@ -3,7 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runResearchSuggest } from "../../src/commands/research.js";
+import {
+  runResearchSuggest,
+  runResearchTrends,
+} from "../../src/commands/research.js";
 import { serveDir, type TestServer } from "../support/server.js";
 
 const CLI = path.resolve("dist/cli.js");
@@ -237,5 +240,74 @@ targets:
     expect(line).toContain("response is not JSON");
     expect(line).not.toContain("HTTP 502");
     expect(line).toContain("4 of 4 requests failed");
+  });
+});
+
+describe("research trends", () => {
+  const trends = (path: string) =>
+    path.endsWith("/explore")
+      ? { body: fx("trends-explore.txt") }
+      : { body: fx("trends-multiline.txt") };
+  const topts = {
+    timeframe: "today 5-y",
+    geo: "FI",
+    hl: "fi",
+    format: "json" as const,
+    noMeta: true,
+    refresh: false,
+    noCache: false,
+  };
+
+  it("trends_exit_codes_and_output", async () => {
+    const h = harness();
+    expect(await runResearchTrends([], topts, h.io)).toBe(2);
+    expect(h.err()).toContain("укажите хотя бы один термин");
+
+    server = await serveDir("tests/fixtures/research", { trends });
+    const h2 = harness();
+    expect(
+      await runResearchTrends(["sähköasentaja", "led"], topts, h2.io, {
+        baseUrl: server.url,
+      }),
+    ).toBe(0);
+    const j = JSON.parse(h2.out());
+    expect(j.kind).toBe("trends");
+    expect(j.rows).toHaveLength(6);
+    expect(j.summary[1].term).toBe("sähköasentaja");
+    expect(j.summary[1].peakMonth).toBe(1);
+    expect(j.meta).toBeUndefined();
+
+    const h3 = harness();
+    expect(
+      await runResearchTrends(
+        ["sähköasentaja", "led"],
+        { ...topts, format: "csv" },
+        h3.io,
+        { baseUrl: server.url },
+      ),
+    ).toBe(0);
+    expect(h3.out().split("\n")[0]).toBe("term,weekStart,value");
+  });
+
+  it("trends_output_write_failure_exits_2", async () => {
+    server = await serveDir("tests/fixtures/research", { trends });
+    const h = harness();
+    writeFileSync(path.join(tmp as string, "file"), "x");
+    expect(
+      await runResearchTrends(
+        ["sähköasentaja", "led"],
+        { ...topts, output: "file/out.json" },
+        h.io,
+        { baseUrl: server.url },
+      ),
+    ).toBe(2);
+    expect(h.err()).toContain("cannot write");
+  });
+
+  it("CLI: no terms exits 2", () => {
+    const r = spawnSync("node", [CLI, "research", "trends"], {
+      encoding: "utf8",
+    });
+    expect(r.status).toBe(2);
   });
 });

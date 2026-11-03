@@ -16,6 +16,7 @@ export function renderData<T extends object>(
   file: DataFile<T>,
   format: "json" | "csv" | "md",
   columns: (keyof T & string)[],
+  extra?: Record<string, unknown>,
 ): string {
   const cell = (row: T, c: keyof T & string): unknown =>
     (row as Record<string, unknown>)[c];
@@ -35,6 +36,7 @@ export function renderData<T extends object>(
     out.rows = file.rows.map((r) =>
       Object.fromEntries(columns.map((c) => [c, cell(r, c) ?? null])),
     );
+    if (extra) Object.assign(out, extra);
     out.errors = file.errors.map((e) => ({
       source: e.source,
       target: e.target,

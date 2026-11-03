@@ -5,6 +5,11 @@ import { createDiskCache, nullCache } from "../research/cache.js";
 import { createHttpJson, type HttpJson } from "../research/http.js";
 import { renderData } from "../research/output.js";
 import { runSuggest, type SuggestRow } from "../research/suggest.js";
+import {
+  ResearchSourceError,
+  runTrends,
+  type TrendsRow,
+} from "../research/trends.js";
 import { VERSION } from "../version.js";
 
 export interface ResearchIO {
@@ -145,6 +150,116 @@ export async function runResearchSuggest(
     warn(
       `${failed} of ${result.attempted} requests failed (see errors in the output)`,
     );
+  }
+  return 0;
+}
+
+export interface ResearchTrendsOptions {
+  config?: string;
+  geo?: string;
+  hl?: string;
+  timeframe: string;
+  format: "json" | "csv" | "md";
+  output?: string;
+  noMeta: boolean;
+  refresh: boolean;
+  noCache: boolean;
+}
+
+const TRENDS_COLUMNS: (keyof TrendsRow & string)[] = [
+  "term",
+  "weekStart",
+  "value",
+];
+
+export async function runResearchTrends(
+  terms: string[],
+  opts: ResearchTrendsOptions,
+  io: ResearchIO,
+  deps: ResearchDeps = {},
+): Promise<number> {
+  const warn = io.warn ?? (() => {});
+  const unique = [
+    ...new Set(terms.map((s) => s.normalize("NFC").trim()).filter(Boolean)),
+  ];
+  if (unique.length === 0) {
+    warn("mielikki: укажите хотя бы один термин");
+    return 2;
+  }
+  const config = await loadConfig(io.cwd, opts.config);
+  const hl = opts.hl ?? config.language ?? "en";
+  const geo = (opts.geo ?? config.region ?? "").toUpperCase();
+  const http =
+    deps.http ??
+    createHttpJson({
+      userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
+      timeoutMs: 15000,
+    });
+  const cache = opts.noCache
+    ? nullCache
+    : createDiskCache(path.join(io.cwd, ".mielikki", "cache"), CACHE_TTL_MS);
+
+  let result: Awaited<ReturnType<typeof runTrends>>;
+  try {
+    // --refresh: bypass reads by using a write-only cache view
+    const view = opts.refresh
+      ? { get: async () => undefined, set: cache.set.bind(cache) }
+      : cache;
+    result = await runTrends(
+      {
+        terms: unique,
+        geo,
+        hl,
+        timeframe: opts.timeframe,
+        baseUrl: deps.baseUrl,
+      },
+      http,
+      view,
+    );
+  } catch (e) {
+    if (e instanceof ResearchSourceError) {
+      warn(e.message.slice(0, 200));
+      return 1;
+    }
+    throw e;
+  }
+
+  const file = {
+    kind: result.kind,
+    rows: result.rows,
+    errors: result.errors,
+    ...(opts.noMeta
+      ? {}
+      : {
+          meta: {
+            generatedAt: (deps.now ?? (() => new Date()))().toISOString(),
+            version: VERSION,
+            params: {
+              hl,
+              geo,
+              timeframe: opts.timeframe,
+              terms: unique.length,
+            },
+          },
+        }),
+  };
+  const text = renderData(file, opts.format, TRENDS_COLUMNS, {
+    summary: result.summary,
+  });
+  if (opts.output) {
+    const target = path.resolve(io.cwd, opts.output);
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, text);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      warn(
+        `mielikki: cannot write ${opts.output}${typeof code === "string" ? ` (${code})` : ""}`,
+      );
+      return 2;
+    }
+  } else {
+    io.write(text);
   }
   return 0;
 }

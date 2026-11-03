@@ -16,6 +16,17 @@ export interface Behaviors {
     q: string,
     params: URLSearchParams,
   ) => { status?: number; type?: string; body: string; delayMs?: number };
+  /** Handler for GET /trends/api/explore and /trends/api/widgetdata/multiline. */
+  trends?: (
+    path: string,
+    params: URLSearchParams,
+    reqHeaders: http.IncomingHttpHeaders,
+  ) => {
+    status?: number;
+    headers?: Record<string, string | string[]>;
+    type?: string;
+    body: string;
+  };
   extra?: Record<
     string,
     { type: string; body: string | Buffer; stream?: "endless" | "stall" }
@@ -30,6 +41,10 @@ export interface TestServer {
   aborted: string[];
   /** Raw request URLs (path + query) of every /complete/search call, in arrival order. */
   suggestLog: string[];
+  /** Raw request URLs of every /trends/api/* call, in arrival order. */
+  trendsLog: string[];
+  /** Cookie header of every /trends/api/* call ("" when absent). */
+  trendsCookies: string[];
 }
 
 const TYPES: Record<string, string> = {
@@ -58,6 +73,8 @@ export async function serveDir(
   const requests: string[] = [];
   const aborted: string[] = [];
   const suggestLog: string[] = [];
+  const trendsLog: string[] = [];
+  const trendsCookies: string[] = [];
   const timers = new Set<NodeJS.Timeout>();
 
   const handle = async (
@@ -88,6 +105,20 @@ export async function serveDir(
       res.writeHead(r.status ?? 200, {
         "content-type": r.type ?? "application/json; charset=utf-8",
         "content-length": String(Buffer.byteLength(r.body)),
+      });
+      res.end(r.body);
+      return;
+    }
+
+    if (pathname.startsWith("/trends/api/") && b.trends) {
+      trendsLog.push(req.url ?? "");
+      trendsCookies.push(req.headers.cookie ?? "");
+      const params = new URL(req.url ?? "/", "http://x").searchParams;
+      const r = b.trends(pathname, params, req.headers);
+      res.writeHead(r.status ?? 200, {
+        "content-type": r.type ?? "application/json; charset=utf-8",
+        "content-length": String(Buffer.byteLength(r.body)),
+        ...r.headers,
       });
       res.end(r.body);
       return;
@@ -187,6 +218,8 @@ export async function serveDir(
     requests,
     aborted,
     suggestLog,
+    trendsLog,
+    trendsCookies,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);

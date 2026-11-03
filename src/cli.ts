@@ -8,7 +8,7 @@ import {
 import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
-import { runResearchSuggest } from "./commands/research.js";
+import { runResearchSuggest, runResearchTrends } from "./commands/research.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -237,6 +237,55 @@ export function buildProgram(): Command {
           format: o.format,
           output: o.output,
           // commander's --no-meta / --no-cache set `meta` / `cache` (default true)
+          noMeta: o.meta === false,
+          refresh: o.refresh === true,
+          noCache: o.cache === false,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  research
+    .command("trends")
+    .description(
+      "Google Trends interest over time (unofficial source; sends requests to trends.google.com)",
+    )
+    .argument(
+      "<terms...>",
+      "search terms (at most 5 per request; more are split into groups sharing the first term as anchor)",
+    )
+    .option("--geo <code>", "country (default: config region)")
+    .option("--hl <lang>", "interface language (default: config language)")
+    .option("--timeframe <t>", "time range", "today 5-y")
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--refresh", "ignore cached answers")
+    .option("--no-cache", "do not read or write the cache")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (terms: string[], o) => {
+      process.exitCode = await runResearchTrends(
+        terms,
+        {
+          config: o.config,
+          geo: o.geo,
+          hl: o.hl,
+          timeframe: o.timeframe,
+          format: o.format,
+          output: o.output,
           noMeta: o.meta === false,
           refresh: o.refresh === true,
           noCache: o.cache === false,

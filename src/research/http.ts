@@ -113,7 +113,13 @@ export function createHttpJson(o: {
       const text = await readCapped(res, maxBytes);
       return {
         status: res.status,
-        headers: Object.fromEntries(res.headers.entries()),
+        headers: {
+          ...Object.fromEntries(res.headers.entries()),
+          // several Set-Cookie headers must not collapse into one: newline-joined
+          ...(res.headers.getSetCookie().length > 0
+            ? { "set-cookie": res.headers.getSetCookie().join("\n") }
+            : {}),
+        },
         text,
       };
     }
