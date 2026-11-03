@@ -23,19 +23,27 @@ export interface ClientSecrets {
 const DESKTOP_HINT =
   "создайте в Google Cloud Console OAuth-клиент типа «Desktop app» и скачайте его JSON";
 
-function safeUri(v: unknown, fallback: string): string {
+const AUTH_HOST = "accounts.google.com";
+const TOKEN_HOST = "oauth2.googleapis.com";
+
+/** Only https and the exact Google host are accepted; the value is never echoed. */
+function safeUri(
+  v: unknown,
+  fallback: string,
+  host: string,
+  name: string,
+): string {
   const s = typeof v === "string" && v !== "" ? v : fallback;
-  let u: URL;
+  let u: URL | undefined;
   try {
     u = new URL(s);
   } catch {
-    throw new UsageError(
-      `Файл клиента: некорректный адрес OAuth; ${DESKTOP_HINT}`,
-    );
+    u = undefined;
   }
-  const loopback = u.hostname === "127.0.0.1" || u.hostname === "localhost";
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && loopback))
-    throw new UsageError("Файл клиента: адрес OAuth должен быть https");
+  if (u?.protocol !== "https:" || u.hostname !== host || u.port !== "")
+    throw new UsageError(
+      `Файл клиента: ${name} должен быть https://${host}/…; ${DESKTOP_HINT}`,
+    );
   return s;
 }
 
@@ -65,14 +73,15 @@ export async function readClientFile(file: string): Promise<ClientSecrets> {
   return {
     clientId: i.client_id,
     clientSecret: i.client_secret,
-    authUri: safeUri(i.auth_uri, DEFAULT_AUTH_URI),
-    tokenUri: safeUri(i.token_uri, DEFAULT_TOKEN_URI),
+    authUri: safeUri(i.auth_uri, DEFAULT_AUTH_URI, AUTH_HOST, "auth_uri"),
+    tokenUri: safeUri(i.token_uri, DEFAULT_TOKEN_URI, TOKEN_HOST, "token_uri"),
   };
 }
 
 export interface LoginIO {
   openUrl(url: string): void;
   print(s: string): void;
+  warn?(s: string): void;
   timeoutMs: number;
 }
 
@@ -121,16 +130,21 @@ async function postToken(
   }
 }
 
-function parseTokens(text: string): { refresh?: string; access?: string } {
+function parseTokens(text: string): {
+  refresh?: string;
+  access?: string;
+  scope: string[];
+} {
   try {
     const o = JSON.parse(text) as Record<string, unknown>;
     return {
       refresh:
         typeof o.refresh_token === "string" ? o.refresh_token : undefined,
       access: typeof o.access_token === "string" ? o.access_token : undefined,
+      scope: typeof o.scope === "string" ? o.scope.split(/\s+/) : [],
     };
   } catch {
-    return {};
+    return { scope: [] };
   }
 }
 
@@ -163,14 +177,11 @@ function waitForCallback(
       const error = u.searchParams.get("error");
       const code = u.searchParams.get("code");
       if (!error && !code) return reply(400, "Нет кода авторизации.");
+      const result: Callback = error
+        ? { error: /^[a-z_]{1,40}$/.test(error) ? error : "unknown" }
+        : { code: code ?? undefined };
+      res.once("close", () => finish(() => resolve(result)));
       reply(200, "Готово. Можно закрыть вкладку и вернуться в терминал.");
-      finish(() =>
-        resolve(
-          error
-            ? { error: /^[a-z_]{1,40}$/.test(error) ? error : "unknown" }
-            : { code: code ?? undefined },
-        ),
-      );
     });
     function finish(then: () => void): void {
       if (settled) return;
@@ -198,7 +209,13 @@ function waitForCallback(
           ),
         timeoutMs,
       );
-      onListening((server.address() as AddressInfo).port);
+      try {
+        onListening((server.address() as AddressInfo).port);
+      } catch {
+        finish(() =>
+          reject(new UsageError("Не удалось показать ссылку для входа")),
+        );
+      }
     });
   });
 }
@@ -257,6 +274,15 @@ export async function runLoopbackLogin(
     );
   }
   const t = parseTokens(res.text);
+  if (!t.scope.includes(SCOPE))
+    throw new UsageError(
+      "Google не выдал доступ webmasters.readonly: повторите mielikki gsc auth и отметьте доступ к Search Console",
+    );
+  const broader = t.scope.filter((x) => x !== SCOPE && x !== "");
+  if (broader.length > 0)
+    io.warn?.(
+      "Предупреждение: Google выдал больше прав, чем запрошено; mielikki использует только чтение Search Console.",
+    );
   if (!t.refresh)
     throw new UsageError(
       "Google не вернул refresh-токен: повторите mielikki gsc auth",
@@ -274,6 +300,14 @@ export async function getAccessToken(
   http_: HttpJson,
   tokenUri: string = DEFAULT_TOKEN_URI,
 ): Promise<string> {
+  return (await refreshAccess(t, http_, tokenUri)).access;
+}
+
+export async function refreshAccess(
+  t: StoredToken,
+  http_: HttpJson,
+  tokenUri: string = DEFAULT_TOKEN_URI,
+): Promise<{ access: string; scope: string[] }> {
   const secrets = [t.clientSecret ?? "", t.refreshToken];
   const res = await postToken(
     http_,
@@ -296,9 +330,9 @@ export async function getAccessToken(
       `Google отклонил обновление токена (HTTP ${res.status}${e ? `, ${e}` : ""})`,
     );
   }
-  const a = parseTokens(res.text).access;
-  if (!a) throw new UsageError("Google не вернул access-токен");
-  return a;
+  const p = parseTokens(res.text);
+  if (!p.access) throw new UsageError("Google не вернул access-токен");
+  return { access: p.access, scope: p.scope };
 }
 
 /** Application Default Credentials: only `authorized_user` is accepted. */

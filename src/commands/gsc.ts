@@ -1,10 +1,13 @@
 import os from "node:os";
 import { UsageError } from "../errors.js";
 import {
+  DEFAULT_TOKEN_URI,
   defaultOpenUrl,
   loadAdc,
   readClientFile,
+  refreshAccess,
   runLoopbackLogin,
+  SCOPE,
 } from "../gsc/oauth.js";
 import { tokenPath } from "../gsc/paths.js";
 import { clearToken, loadToken, saveToken } from "../gsc/token-store.js";
@@ -29,6 +32,9 @@ export interface GscAuthOptions {
 export interface GscDeps {
   http?: HttpJson;
   openUrl?: (url: string) => void;
+  /** Fake endpoints for tests; the CLI never sets these. */
+  authUri?: string;
+  tokenUri?: string;
   timeoutMs?: number;
 }
 
@@ -42,6 +48,12 @@ const HELP = [
   "Подробнее: docs/gsc.md.",
 ].join("\n");
 
+const defaultHttp = (): HttpJson =>
+  createHttpJson({
+    userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
+    timeoutMs: 15000,
+  });
+
 export async function runGscAuth(
   o: GscAuthOptions,
   io: GscIO,
@@ -50,9 +62,18 @@ export async function runGscAuth(
   const warn = io.warn ?? (() => {});
   const file = tokenPath(io.env ?? process.env, io.home ?? os.homedir());
   try {
+    if (o.adc && o.client)
+      throw new UsageError("Укажите либо --adc, либо --client, не оба сразу");
     if (o.logout) {
+      const had = await loadToken(file);
       await clearToken(file);
-      io.write("Сохранённый доступ удалён.\n");
+      io.write(
+        `Локальный токен удалён (или его не было); доступ остаётся выдан, пока вы не отзовёте его на myaccount.google.com/permissions.${
+          had?.source === "adc"
+            ? " Собственная копия gcloud (ADC) не затронута."
+            : ""
+        }\n`,
+      );
       return 0;
     }
     if (o.adc) {
@@ -61,23 +82,31 @@ export async function runGscAuth(
         throw new UsageError(
           "ADC не найдены: выполните gcloud auth application-default login или задайте GOOGLE_APPLICATION_CREDENTIALS",
         );
+      const http = deps.http ?? defaultHttp();
+      const r = await refreshAccess(
+        t,
+        http,
+        deps.tokenUri ?? DEFAULT_TOKEN_URI,
+      );
+      if (!r.scope.includes(SCOPE))
+        throw new UsageError(
+          `В ADC нет доступа webmasters.readonly: gcloud auth application-default login --scopes=${SCOPE},https://www.googleapis.com/auth/cloud-platform`,
+        );
       await saveToken(file, t);
       io.write("Авторизовано (источник adc).\n");
       return 0;
     }
     if (o.client) {
       const c = await readClientFile(o.client);
-      const http =
-        deps.http ??
-        createHttpJson({
-          userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
-          timeoutMs: 15000,
-        });
+      if (deps.authUri) c.authUri = deps.authUri;
+      if (deps.tokenUri) c.tokenUri = deps.tokenUri;
+      const http = deps.http ?? defaultHttp();
       const t = await runLoopbackLogin(
         c,
         {
           openUrl: o.noOpen ? () => {} : (deps.openUrl ?? defaultOpenUrl),
           print: (s) => io.write(`${s}\n`),
+          warn,
           timeoutMs: deps.timeoutMs ?? 300_000,
         },
         http,

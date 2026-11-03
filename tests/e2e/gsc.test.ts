@@ -50,7 +50,7 @@ function harness() {
   };
 }
 
-function clientFile(dir: string, base: string): string {
+function clientFile(dir: string): string {
   const f = path.join(dir, "client.json");
   writeFileSync(
     f,
@@ -58,13 +58,19 @@ function clientFile(dir: string, base: string): string {
       installed: {
         client_id: "e2e-client-id",
         client_secret: "E2E-client-SECRET",
-        auth_uri: `${base}/authorize`,
-        token_uri: `${base}/token`,
+        auth_uri: "https://accounts.google.com/o/oauth2/v2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
       },
     }),
   );
   return f;
 }
+
+const SC = "https://www.googleapis.com/auth/webmasters.readonly";
+const fake = (base: string) => ({
+  authUri: `${base}/authorize`,
+  tokenUri: `${base}/token`,
+});
 
 const browser =
   (code: string) =>
@@ -83,13 +89,19 @@ describe("gsc auth", () => {
         body: JSON.stringify({
           refresh_token: "REFRESH-tok-E2E",
           access_token: "ACCESS-tok-E2E",
+          scope: SC,
         }),
       }),
     });
     const code = await runGscAuth(
-      { ...opts, client: clientFile(h.tmp, server.url) },
+      { ...opts, client: clientFile(h.tmp) },
       h.io,
-      { http, openUrl: browser("AUTHCODE-e2e1"), timeoutMs: 5000 },
+      {
+        http,
+        ...fake(server.url),
+        openUrl: browser("AUTHCODE-e2e1"),
+        timeoutMs: 5000,
+      },
     );
     expect(code).toBe(0);
     expect(statSync(h.token).mode & 0o777).toBe(0o600);
@@ -123,9 +135,14 @@ describe("gsc auth", () => {
       }),
     });
     const code = await runGscAuth(
-      { ...opts, client: clientFile(h.tmp, server.url) },
+      { ...opts, client: clientFile(h.tmp) },
       h.io,
-      { http, openUrl: browser("AUTHCODE-leak9"), timeoutMs: 5000 },
+      {
+        http,
+        ...fake(server.url),
+        openUrl: browser("AUTHCODE-leak9"),
+        timeoutMs: 5000,
+      },
     );
     expect(code).toBe(2);
     expect(existsSync(h.token)).toBe(false);
@@ -152,8 +169,9 @@ describe("gsc auth", () => {
         body: JSON.stringify({ refresh_token: "REFRESH-tok-E2E" }),
       }),
     });
-    await runGscAuth({ ...opts, client: clientFile(h.tmp, server.url) }, h.io, {
+    await runGscAuth({ ...opts, client: clientFile(h.tmp) }, h.io, {
       http,
+      ...fake(server.url),
       openUrl: browser("c-abcdef"),
       timeoutMs: 5000,
     });
@@ -161,27 +179,80 @@ describe("gsc auth", () => {
     expect(existsSync(h.token)).toBe(false);
   });
 
-  it("--adc saves an authorized_user token, rejects service accounts", async () => {
+  it("--adc stores only when the scope is right, rejects service accounts", async () => {
     const h = harness();
     const f = path.join(h.tmp, "adc.json");
-    writeFileSync(
-      f,
-      JSON.stringify({
-        type: "authorized_user",
-        client_id: "c",
-        client_secret: "cs",
-        refresh_token: "rt",
-      }),
-    );
+    const adc = {
+      type: "authorized_user",
+      client_id: "c",
+      client_secret: "cs",
+      refresh_token: "rt-adc-1",
+    };
+    writeFileSync(f, JSON.stringify(adc));
     const io = {
       ...h.io,
       env: { ...h.io.env, GOOGLE_APPLICATION_CREDENTIALS: f },
     };
-    expect(await runGscAuth({ ...opts, adc: true }, io)).toBe(0);
+    let scope = "https://www.googleapis.com/auth/cloud-platform";
+    server = await serveDir(h.tmp, {
+      oauth: () => ({ body: JSON.stringify({ access_token: "acc-1", scope }) }),
+    });
+    const deps = { http, tokenUri: `${server.url}/token` };
+    expect(await runGscAuth({ ...opts, adc: true }, io, deps)).toBe(2);
+    expect(h.err()).toContain(
+      "gcloud auth application-default login --scopes=https://www.googleapis.com/auth/webmasters.readonly,https://www.googleapis.com/auth/cloud-platform",
+    );
+    expect(existsSync(h.token)).toBe(false);
+    scope = `${SC} https://www.googleapis.com/auth/cloud-platform`;
+    expect(await runGscAuth({ ...opts, adc: true }, io, deps)).toBe(0);
     expect(h.out()).toContain("adc");
+    expect(existsSync(h.token)).toBe(true);
     writeFileSync(f, JSON.stringify({ type: "service_account" }));
-    expect(await runGscAuth({ ...opts, adc: true }, io)).toBe(2);
+    expect(await runGscAuth({ ...opts, adc: true }, io, deps)).toBe(2);
     expect(h.err()).toContain("authorized_user");
+  });
+
+  it("--adc with --client is a usage error", async () => {
+    const h = harness();
+    expect(
+      await runGscAuth({ ...opts, adc: true, client: "x.json" }, h.io),
+    ).toBe(2);
+    expect(h.err()).toContain("--adc");
+  });
+
+  it("client with a foreign auth_uri: nothing opened, nothing posted", async () => {
+    const h = harness();
+    server = await serveDir(h.tmp, { oauth: () => ({ body: "{}" }) });
+    const f = path.join(h.tmp, "evil.json");
+    writeFileSync(
+      f,
+      JSON.stringify({
+        installed: {
+          client_id: "a",
+          client_secret: "E2E-client-SECRET",
+          auth_uri: "https://evil.example/auth",
+          token_uri: `${server.url}/token`,
+        },
+      }),
+    );
+    let opened = 0;
+    const code = await runGscAuth({ ...opts, client: f }, h.io, {
+      http,
+      openUrl: () => {
+        opened++;
+      },
+    });
+    expect(code).toBe(2);
+    expect(opened).toBe(0);
+    expect(server.oauthLog).toHaveLength(0);
+    expect(h.out() + h.err()).not.toContain("evil");
+  });
+
+  it("logout wording does not claim a revoke", async () => {
+    const h = harness();
+    expect(await runGscAuth({ ...opts, logout: true }, h.io)).toBe(0);
+    expect(h.out()).toContain("myaccount.google.com/permissions");
+    expect(h.out()).toContain("или его не было");
   });
 
   it("CLI: gsc auth without args exits 2", () => {

@@ -44,6 +44,7 @@ const ok = (): { body: string } => ({
   body: JSON.stringify({
     refresh_token: "r-tok-123456",
     access_token: "a-tok-1",
+    scope: "https://www.googleapis.com/auth/webmasters.readonly",
   }),
 });
 
@@ -224,6 +225,71 @@ describe("runLoopbackLogin", () => {
   });
 });
 
+describe("scope checks and robustness", () => {
+  const login = (c: ClientSecrets, extra: object = {}) =>
+    runLoopbackLogin(
+      c,
+      {
+        timeoutMs: 5000,
+        print: () => {},
+        openUrl: (u) => {
+          const p = new URL(u).searchParams;
+          void fetch(
+            `${p.get("redirect_uri")}/?code=CODE-abcdef&state=${p.get("state")}`,
+          );
+        },
+        ...extra,
+      },
+      http,
+    );
+  it("refuses a grant without webmasters.readonly", async () => {
+    const c = await start(() => ({
+      body: JSON.stringify({ refresh_token: "r-tok-123456", scope: "openid" }),
+    }));
+    await expect(login(c)).rejects.toThrow(/webmasters\.readonly/);
+  });
+  it("warns about broader scopes but succeeds", async () => {
+    const c = await start(() => ({
+      body: JSON.stringify({
+        refresh_token: "r-tok-123456",
+        scope:
+          "https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/drive",
+      }),
+    }));
+    let warned = "";
+    const t = await login(c, { warn: (s: string) => (warned += s) });
+    expect(t.refreshToken).toBe("r-tok-123456");
+    expect(warned).toContain("больше прав");
+  });
+  it("a throwing print rejects and closes the server", async () => {
+    const c = await start(ok);
+    await expect(
+      login(c, {
+        print: () => {
+          throw new Error("boom");
+        },
+        openUrl: () => {},
+      }),
+    ).rejects.toThrow(UsageError);
+  });
+  it("the success page is delivered completely", async () => {
+    const c = await start(ok);
+    let body = "";
+    await login(c, {
+      openUrl: (u: string) => {
+        const p = new URL(u).searchParams;
+        void fetch(
+          `${p.get("redirect_uri")}/?code=CODE-abcdef&state=${p.get("state")}`,
+        )
+          .then((r) => r.text())
+          .then((t) => (body = t));
+      },
+    });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(body).toContain("Готово");
+  });
+});
+
 describe("getAccessToken", () => {
   const stored = {
     clientId: "cid",
@@ -286,17 +352,28 @@ describe("readClientFile", () => {
     expect(e).toBeInstanceOf(UsageError);
     expect((e as Error).message).not.toContain("SHHH");
   });
-  it("rejects a non-https, non-loopback token_uri", async () => {
+  it.each([
+    ["auth_uri on another https host", { auth_uri: "https://evil.example/a" }],
+    [
+      "token_uri on another https host",
+      { token_uri: "https://evil.example/t" },
+    ],
+    ["token_uri on localhost http", { token_uri: "http://localhost:1/token" }],
+    ["auth_uri on loopback http", { auth_uri: "http://127.0.0.1:1/a" }],
+    [
+      "token_uri look-alike host",
+      { token_uri: "https://oauth2.googleapis.com.evil.example/t" },
+    ],
+  ])("rejects %s without echoing it", async (_n, extra) => {
     const f = write(
       JSON.stringify({
-        installed: {
-          client_id: "a",
-          client_secret: "b",
-          token_uri: "http://evil.example/token",
-        },
+        installed: { client_id: "a", client_secret: "b", ...extra },
       }),
     );
-    await expect(readClientFile(f)).rejects.toThrow(UsageError);
+    const e = await readClientFile(f).catch((x: unknown) => x as Error);
+    expect(e).toBeInstanceOf(UsageError);
+    expect((e as Error).message).not.toContain("evil");
+    expect((e as Error).message).not.toContain("127.0.0.1");
   });
 });
 

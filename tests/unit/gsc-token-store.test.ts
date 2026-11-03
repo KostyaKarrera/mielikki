@@ -5,7 +5,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { chmod, mkdir, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,6 +31,22 @@ const tok: StoredToken = {
 };
 
 describe("token store", () => {
+  it("tightens a pre-existing 0755 dir to 0700", async () => {
+    const d = path.join(mk(), "m");
+    await mkdir(d, { mode: 0o755 });
+    await chmod(d, 0o755);
+    await saveToken(path.join(d, "t.json"), tok);
+    expect(statSync(d).mode & 0o777).toBe(0o700);
+  });
+  it("refuses a symlinked config dir", async () => {
+    const base = mk();
+    await mkdir(path.join(base, "real"));
+    await symlink(path.join(base, "real"), path.join(base, "link"));
+    await expect(
+      saveToken(path.join(base, "link", "t.json"), tok),
+    ).rejects.toThrow(/symlink/);
+    expect(readdirSync(path.join(base, "real"))).toEqual([]);
+  });
   it("writes dir 0700 and file 0600 and round-trips", async () => {
     const f = path.join(mk(), "cfg", "mielikki", "gsc-token.json");
     await saveToken(f, tok);

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import {
   chmod,
+  lstat,
   mkdir,
   readFile,
   rename,
@@ -8,6 +9,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { UsageError } from "../errors.js";
 
 export interface StoredToken {
   clientId: string;
@@ -19,6 +21,8 @@ export interface StoredToken {
 /** Dir 0700, file 0600, written to a private temp file and renamed into place. */
 export async function saveToken(file: string, t: StoredToken): Promise<void> {
   const dir = path.dirname(file);
+  const st = await lstat(dir).catch(() => undefined);
+  if (st?.isSymbolicLink()) throw new UsageError("token dir is a symlink");
   await mkdir(dir, { recursive: true, mode: 0o700 });
   await chmod(dir, 0o700);
   const tmp = path.join(
