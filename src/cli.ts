@@ -51,7 +51,7 @@ export function buildProgram(): Command {
   const program = new Command();
   program
     .name("mielikki")
-    .description("Local, offline SEO audit CLI")
+    .description("Deterministic SEO audit and keyword-research CLI")
     .version(VERSION)
     .exitOverride();
 

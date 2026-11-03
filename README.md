@@ -1,23 +1,27 @@
 # Mielikki
 
-Local SEO audit CLI for built static sites. Point it at a build directory (`dist/`) or a running site, get a list of concrete problems with fixes. `check` is deterministic (the same files, or the same server responses, give the same report), has no telemetry and no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at; `perf` loads the pages you name in headless Chrome.
+SEO audit and keyword-research CLI for websites. Point it at a build directory (`dist/`) or a running site, get a list of concrete problems with fixes. `check` is deterministic (the same files, or the same server responses, give the same report), has no telemetry and no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at; `perf` loads the pages you name in headless Chrome.
 
-> **Status: pre-1.0 (0.2.0).** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Two data commands feed the work around the audit: `research` (Google suggestions, trends, competitor structure; see [docs/research.md](docs/research.md)) and `gsc` (Search Console, read-only, your own OAuth client; see [docs/gsc.md](docs/gsc.md)). JavaScript is never executed: Mielikki audits the HTML the server sends.
+> **Status: 1.0.0.** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Two data commands feed the work around the audit: `research` (Google suggestions, trends, competitor structure; see [docs/research.md](docs/research.md)) and `gsc` (Search Console, read-only, your own OAuth client; see [docs/gsc.md](docs/gsc.md)). JavaScript is never executed: Mielikki audits the HTML the server sends.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
 ## Install
 
-Until the package is published to npm, install from git:
+```sh
+npx mielikki --help         # run without installing
+npm i -D mielikki           # or add to a project
+```
+
+To try an unreleased commit, install from git:
 
 ```sh
 npm i -D github:KostyaKarrera/mielikki
-npx mielikki --help
 ```
 
 The compiled `dist/` is not committed: on a git install npm runs the package's `prepare` script (`npm run build`), which compiles it with the package's own dev dependencies. Installing with `--ignore-scripts` skips that step and leaves no CLI.
 
-After the npm release: `npx mielikki ...`. Requires Node.js 22.12 or newer.
+Requires Node.js 22.12 or newer.
 
 ## Quick start
 
@@ -144,7 +148,7 @@ npx mielikki gsc queries --by-target
 npx mielikki gsc inspect --limit 100
 ```
 
-`research` writes data files (json, csv or md) for analysis, for example in Claude Code, before you set `targets` in the config; Google Trends is an unofficial source and may stop working. `gsc` reads your own Search Console data (queries, URL Inspection) with an OAuth client you create yourself. Details, limits and setup: [docs/research.md](docs/research.md), [docs/gsc.md](docs/gsc.md). Research output and the cache (`.mielikki/`, add it to `.gitignore`) are local; only `check <dir>` is fully offline.
+`research` writes data files (json, csv or md) for analysis, for example in Claude Code, before you set `targets` in the config; Google Trends is an unofficial source and may stop working. `gsc` reads your own Search Console data (queries, URL Inspection) with an OAuth client you create yourself. Details, limits and setup: [docs/research.md](docs/research.md), [docs/gsc.md](docs/gsc.md). Research output and the cache (`.mielikki/`, add it to `.gitignore`) are local; only `check <dir>` (with `rules` and `init`) works fully offline.
 
 ## Network and privacy
 
