@@ -59,7 +59,9 @@ export async function runResearchSuggest(
   if (opts.fromConfig) {
     for (const p of config.targets.pages) all.push(p.primary, ...p.secondary);
   }
-  const unique = [...new Set(all.map((s) => s.trim()).filter(Boolean))];
+  const unique = [
+    ...new Set(all.map((s) => s.normalize("NFC").trim()).filter(Boolean)),
+  ];
   if (unique.length === 0) {
     warn(
       "mielikki: укажите основы или --from-config (в конфиге нет targets.pages)",
@@ -87,7 +89,7 @@ export async function runResearchSuggest(
       expand: opts.expand,
       delayMs: opts.delay,
       baseUrl: deps.baseUrl,
-      lang: config.language,
+      lang: hl,
       refresh: opts.refresh,
     },
     http,
@@ -95,10 +97,11 @@ export async function runResearchSuggest(
     deps.sleep,
   );
 
-  if (result.attempted > 0 && result.errors.length >= result.attempted) {
-    const first = result.errors[0];
+  const failed = result.attempted - result.succeeded;
+  if (result.attempted > 0 && result.succeeded === 0) {
+    const msgs = [...new Set(result.errors.map((e) => e.message))].slice(0, 3);
     warn(
-      `Google Suggest unavailable: ${first?.message ?? "no response"} (${result.errors.length} of ${result.attempted} requests failed; try again later)`,
+      `Google Suggest unavailable: ${msgs.join("; ") || "no response"} (${failed} of ${result.attempted} requests failed; try again later)`,
     );
     return 1;
   }
@@ -125,14 +128,22 @@ export async function runResearchSuggest(
   const text = renderData(file, opts.format, COLUMNS);
   if (opts.output) {
     const target = path.resolve(io.cwd, opts.output);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, text);
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, text);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      warn(
+        `mielikki: cannot write ${opts.output}${typeof code === "string" ? ` (${code})` : ""}`,
+      );
+      return 2;
+    }
   } else {
     io.write(text);
   }
   if (result.errors.length > 0) {
     warn(
-      `${result.errors.length} of ${result.attempted} requests failed (see errors in the output)`,
+      `${failed} of ${result.attempted} requests failed (see errors in the output)`,
     );
   }
   return 0;

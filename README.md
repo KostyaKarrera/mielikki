@@ -46,7 +46,7 @@ business:
   type: service-area # brick-and-mortar | service-area | hybrid
   schemaType: Electrician
   name: Example Sähkö Oy
-  phone: "+358 41 555 0142"
+  phone: "+358 41 000 0000"
   areaServed: [Loviisa, Porvoo, Helsinki, Uusimaa]
   hasReviews: false # aggregateRating/Review in schema without real reviews is an error
 exclude:

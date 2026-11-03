@@ -55,13 +55,13 @@
     {
       "ruleId": "schema/nap-mismatch",
       "severity": "error",
-      "message": "telephone \"+358 41 555 0199\" differs from configured \"+358 41 555 0142\"",
+      "message": "telephone \"+358 41 000 0001\" differs from configured \"+358 41 000 0000\"",
       "fix": "Make name and telephone in the JSON-LD identical to the business data in the config.",
       "url": "/yhteystiedot/",
       "details": {
         "field": "telephone",
-        "found": "+358 41 555 0199",
-        "expected": "+358 41 555 0142"
+        "found": "+358 41 000 0001",
+        "expected": "+358 41 000 0000"
       }
     },
     {

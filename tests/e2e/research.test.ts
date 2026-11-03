@@ -176,4 +176,66 @@ targets:
     expect(run(["x", "--expand", "nope"]).status).toBe(2);
     expect(run(["x", "--delay", "-1"]).status).toBe(2);
   });
+
+  it("--hl overrides config language for the alphabet", async () => {
+    server = await serveDir("tests/fixtures/research", {
+      suggest: (q) => ({ body: JSON.stringify([q, []]) }),
+    });
+    const h = harness();
+    writeFileSync(
+      path.join(h.io.cwd, "mielikki.config.yaml"),
+      "language: fi\nregion: FI\n",
+    );
+    const code = await runResearchSuggest(
+      ["x"],
+      { ...base, expand: "alphabet", hl: "en", noCache: true },
+      h.io,
+      { baseUrl: server.url, sleep: async () => {} },
+    );
+    expect(code).toBe(0);
+    expect(server.suggestLog).toHaveLength(27);
+    expect(server.suggestLog.join("\n")).toContain("hl=en&gl=fi");
+  });
+
+  it("unwritable --output exits 2 with a clear message", async () => {
+    server = await serveDir("tests/fixtures/research", {
+      suggest: () => ({ body: fx("suggest-bare.json") }),
+    });
+    const h = harness();
+    writeFileSync(path.join(h.io.cwd, "file"), "");
+    const code = await runResearchSuggest(
+      ["sähköasentaja"],
+      { ...base, output: "file/out.json" },
+      h.io,
+      { baseUrl: server.url, sleep: async () => {} },
+    );
+    expect(code).toBe(2);
+    expect(h.err()).toContain("cannot write file/out.json");
+    expect(h.err()).not.toMatch(/\n\s+at /);
+  });
+
+  it("exit 1 lists up to 3 distinct messages", async () => {
+    server = await serveDir("tests/fixtures/research", {
+      suggest: (q) =>
+        q === "a"
+          ? { status: 500, body: "" }
+          : q === "b"
+            ? { status: 403, body: "" }
+            : q === "c"
+              ? { body: "<html>" }
+              : { status: 502, body: "" },
+    });
+    const h = harness();
+    const code = await runResearchSuggest(["a", "b", "c", "d"], base, h.io, {
+      baseUrl: server.url,
+      sleep: async () => {},
+    });
+    expect(code).toBe(1);
+    const line = h.err();
+    expect(line).toContain("HTTP 403");
+    expect(line).toContain("HTTP 500");
+    expect(line).toContain("response is not JSON");
+    expect(line).not.toContain("HTTP 502");
+    expect(line).toContain("4 of 4 requests failed");
+  });
 });

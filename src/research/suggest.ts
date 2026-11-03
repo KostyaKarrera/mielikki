@@ -29,7 +29,12 @@ export interface SuggestOptions {
 export type SuggestResult = DataFile<SuggestRow> & {
   /** Number of distinct requests attempted (cache hits included). */
   attempted: number;
+  /** Requests that produced a valid answer (network or cache). */
+  succeeded: number;
 };
+
+const MAX_THROTTLED = 5;
+const MAX_MESSAGE = 200;
 
 const SOURCE = "google-suggest";
 const DEFAULT_BASE = "https://suggestqueries.google.com";
@@ -66,9 +71,9 @@ export async function runSuggest(
   const templates =
     o.expand === "questions" || o.expand === "both" ? questionTemplates(l) : [];
 
-  const seeds = [...new Set(o.seeds.map((s) => s.trim()).filter(Boolean))].sort(
-    (a, b) => cmp(a, b),
-  );
+  const seeds = [
+    ...new Set(o.seeds.map((s) => s.normalize("NFC").trim()).filter(Boolean)),
+  ].sort((a, b) => cmp(a, b));
   const jobs: { seed: string; expansion: string; q: string }[] = [];
   for (const seed of seeds) {
     const variants = [
@@ -85,12 +90,29 @@ export async function runSuggest(
   const errors: ResearchError[] = [];
   let networkCalls = 0;
 
-  for (const job of jobs) {
+  let succeeded = 0;
+  let throttled = 0;
+  for (let ji = 0; ji < jobs.length; ji++) {
+    const job = jobs[ji] as (typeof jobs)[number];
+    if (throttled >= MAX_THROTTLED) {
+      const left = jobs.length - ji;
+      errors.push({
+        source: SOURCE,
+        target: "(remaining)",
+        message: `skipped ${left} requests after repeated 429/503`,
+      });
+      break;
+    }
     const key = `suggest|${o.hl}|${o.gl}|${job.q}`;
     try {
       let suggestions: string[] | undefined;
       if (!o.refresh) {
-        const hit = await cache.get(key);
+        let hit: string | undefined;
+        try {
+          hit = await cache.get(key);
+        } catch {
+          hit = undefined; // cache read failure = miss
+        }
         if (hit !== undefined) {
           try {
             suggestions = parseAnswer(hit);
@@ -104,10 +126,20 @@ export async function runSuggest(
         networkCalls++;
         const url = `${base}/complete/search?client=firefox&hl=${encodeURIComponent(o.hl)}&gl=${encodeURIComponent(o.gl)}&q=${encodeURIComponent(job.q)}`;
         const res = await http.getText(url);
-        if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+        if (res.status !== 200) {
+          if (res.status === 429 || res.status === 503) throttled++;
+          else throttled = 0;
+          throw new Error(`HTTP ${res.status}`);
+        }
         suggestions = parseAnswer(res.text);
-        await cache.set(key, res.text);
+        try {
+          await cache.set(key, res.text);
+        } catch {
+          // cache is best-effort: a write failure must not drop the answer
+        }
       }
+      throttled = 0;
+      succeeded++;
       suggestions.forEach((query, i) => {
         if (!byQuery.has(query)) {
           byQuery.set(query, {
@@ -122,8 +154,10 @@ export async function runSuggest(
       errors.push({
         source: SOURCE,
         target: job.q,
-        message:
-          e instanceof Error ? e.message.split("\n")[0] || "failed" : "failed",
+        message: (e instanceof Error
+          ? e.message.split("\n")[0] || "failed"
+          : "failed"
+        ).slice(0, MAX_MESSAGE),
       });
     }
   }
@@ -132,5 +166,5 @@ export async function runSuggest(
     (a, b) => cmp(a.query, b.query) || cmp(a.seed, b.seed),
   );
   errors.sort((a, b) => cmp(a.target, b.target));
-  return { kind: "suggest", rows, errors, attempted: jobs.length };
+  return { kind: "suggest", rows, errors, attempted: jobs.length, succeeded };
 }

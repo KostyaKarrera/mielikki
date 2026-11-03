@@ -210,4 +210,121 @@ describe("runSuggest", () => {
     expect(f.errors).toHaveLength(1);
     expect(f.errors[0]?.message).toContain("network");
   });
+
+  it("alphabet follows the effective hl, not another language", async () => {
+    const s = await start(answer);
+    await runSuggest(opts(s, { hl: "en", gl: "fi" }), http, nullCache, noSleep);
+    const qs = s.suggestLog.map((u) =>
+      new URL(u, "http://x").searchParams.get("q"),
+    );
+    expect(qs).toHaveLength(27);
+    expect(qs).not.toContain("sähköasentaja ä");
+  });
+
+  it("cache get/set failures are ignored, rows kept", async () => {
+    const s = await start(answer);
+    const broken: DiskCache = {
+      async get() {
+        throw new Error("EACCES");
+      },
+      async set() {
+        throw new Error("ENOSPC");
+      },
+    };
+    const f = await runSuggest(
+      opts(s, { expand: "none" }),
+      http,
+      broken,
+      noSleep,
+    );
+    expect(f.errors).toEqual([]);
+    expect(f.rows).toHaveLength(3);
+    expect(f.succeeded).toBe(1);
+  });
+
+  it("corrupt cache entry is a miss", async () => {
+    const s = await start(answer);
+    const cache: DiskCache = {
+      async get() {
+        return "<<not json>>";
+      },
+      async set() {},
+    };
+    const f = await runSuggest(
+      opts(s, { expand: "none" }),
+      http,
+      cache,
+      noSleep,
+    );
+    expect(s.suggestLog).toHaveLength(1);
+    expect(f.rows).toHaveLength(3);
+    expect(f.errors).toEqual([]);
+  });
+
+  it("delay 0 never sleeps", async () => {
+    const s = await start(answer);
+    let calls = 0;
+    await runSuggest(
+      opts(s, { delayMs: 0, expand: "questions", lang: "fi" }),
+      http,
+      nullCache,
+      async () => {
+        calls++;
+      },
+    );
+    expect(calls).toBe(0);
+  });
+
+  it("stops after 5 consecutive 429/503 with one summary error", async () => {
+    const s = await start(() => ({ status: 429, body: "no" }));
+    const f = await runSuggest(opts(s), http, nullCache, noSleep);
+    expect(s.suggestLog).toHaveLength(5);
+    expect(f.errors).toHaveLength(6);
+    expect(f.errors.find((e) => e.target === "(remaining)")?.message).toBe(
+      "skipped 25 requests after repeated 429/503",
+    );
+    expect(f.succeeded).toBe(0);
+  });
+
+  it("a success resets the throttle counter", async () => {
+    let n = 0;
+    const s = await start((q) =>
+      ++n % 2 === 0 ? answer(q) : { status: 503, body: "no" },
+    );
+    const f = await runSuggest(opts(s), http, nullCache, noSleep);
+    expect(s.suggestLog).toHaveLength(30);
+    expect(f.errors.every((e) => e.message === "HTTP 503")).toBe(true);
+  });
+
+  it("NFC-normalizes and dedupes seeds", async () => {
+    const s = await start(answer);
+    const f = await runSuggest(
+      opts(s, {
+        seeds: ["  sa\u0308hko\u0308asentaja ", "sähköasentaja"],
+        expand: "none",
+      }),
+      http,
+      nullCache,
+      noSleep,
+    );
+    expect(s.suggestLog).toHaveLength(1);
+    expect(s.suggestLog[0]).toContain("q=s%C3%A4hk%C3%B6asentaja");
+    expect(f.rows[0]?.seed).toBe("sähköasentaja");
+  });
+
+  it("caps error message length at 200", async () => {
+    const long: typeof http = {
+      getText: async () => {
+        throw new Error(`network: ${"x".repeat(500)}`);
+      },
+      postJson: async () => ({ status: 200, text: "" }),
+    };
+    const f = await runSuggest(
+      { seeds: ["a"], hl: "fi", gl: "fi", expand: "none", delayMs: 0 },
+      long,
+      nullCache,
+      noSleep,
+    );
+    expect(f.errors[0]?.message).toHaveLength(200);
+  });
 });
