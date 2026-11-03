@@ -260,11 +260,15 @@ export function buildProgram(): Command {
     )
     .argument(
       "<terms...>",
-      "search terms (at most 5 per request; more are split into groups sharing the first term as anchor)",
+      "search terms. Google allows 5 per request: more are split into groups sharing the first term as anchor, and later groups are rescaled to the anchor (approximate, values may exceed 100)",
     )
     .option("--geo <code>", "country (default: config region)")
     .option("--hl <lang>", "interface language (default: config language)")
-    .option("--timeframe <t>", "time range", "today 5-y")
+    .option(
+      "--timeframe <t>",
+      'time range; weekStart holds the point\'s start (full ISO timestamp for sub-daily ranges such as "now 7-d")',
+      "today 5-y",
+    )
     .addOption(
       new Option("--format <fmt>", "output format")
         .choices(["json", "csv", "md"])

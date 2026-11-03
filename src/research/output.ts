@@ -1,5 +1,12 @@
 import type { DataFile } from "./types.js";
 
+export interface SummaryRow {
+  term: string;
+  average: number;
+  peakMonth: number | null;
+  seasonality: number[];
+}
+
 export function csvCell(v: unknown): string {
   if (v === undefined || v === null) return "";
   let s = typeof v === "string" ? v : String(v);
@@ -16,7 +23,7 @@ export function renderData<T extends object>(
   file: DataFile<T>,
   format: "json" | "csv" | "md",
   columns: (keyof T & string)[],
-  extra?: Record<string, unknown>,
+  extra?: { summary?: SummaryRow[] },
 ): string {
   const cell = (row: T, c: keyof T & string): unknown =>
     (row as Record<string, unknown>)[c];
@@ -36,7 +43,7 @@ export function renderData<T extends object>(
     out.rows = file.rows.map((r) =>
       Object.fromEntries(columns.map((c) => [c, cell(r, c) ?? null])),
     );
-    if (extra) Object.assign(out, extra);
+    if (extra?.summary) out.summary = extra.summary;
     out.errors = file.errors.map((e) => ({
       source: e.source,
       target: e.target,
@@ -57,6 +64,20 @@ export function renderData<T extends object>(
   ];
   for (const r of file.rows) {
     lines.push(`| ${columns.map((c) => mdCell(cell(r, c))).join(" | ")} |`);
+  }
+  if (extra?.summary) {
+    lines.push(
+      "",
+      "Summary",
+      "",
+      "| term | average | peakMonth | seasonality |",
+      "| --- | --- | --- | --- |",
+    );
+    for (const r of extra.summary) {
+      lines.push(
+        `| ${[r.term, r.average, r.peakMonth, r.seasonality.join(" ")].map(mdCell).join(" | ")} |`,
+      );
+    }
   }
   return `${lines.join("\n")}\n`;
 }

@@ -289,6 +289,32 @@ describe("research trends", () => {
     expect(h3.out().split("\n")[0]).toBe("term,weekStart,value");
   });
 
+  it("trends md includes summary table, csv warns", async () => {
+    server = await serveDir("tests/fixtures/research", { trends });
+    const h = harness();
+    await runResearchTrends(
+      ["sähköasentaja", "led"],
+      { ...topts, format: "md" },
+      h.io,
+      {
+        baseUrl: server.url,
+      },
+    );
+    expect(h.out()).toContain("Summary");
+    expect(h.out()).toContain("| term | average | peakMonth | seasonality |");
+    const h2 = harness();
+    await runResearchTrends(
+      ["sähköasentaja", "led"],
+      { ...topts, format: "csv" },
+      h2.io,
+      {
+        baseUrl: server.url,
+      },
+    );
+    expect(h2.err()).toContain("summary is only included in json/md output");
+    expect(h2.out()).not.toContain("Summary");
+  });
+
   it("trends_output_write_failure_exits_2", async () => {
     server = await serveDir("tests/fixtures/research", { trends });
     const h = harness();

@@ -232,4 +232,147 @@ describe("trends", () => {
     const r = await runTrends(opts(server.url), http, bad);
     expect(r.rows).toHaveLength(6);
   });
+
+  const dyn = (
+    series: (n: number, group: number) => number[][],
+    prefix = ")]}'\n",
+    times = ["1704067200", "1704672000"],
+  ): Behaviors["trends"] => {
+    let g = 0;
+    return (p, params) => {
+      if (p.endsWith("/explore")) {
+        const n = (
+          JSON.parse(params.get("req") ?? "{}") as { comparisonItem: unknown[] }
+        ).comparisonItem.length;
+        g++;
+        return {
+          body: `${prefix}${JSON.stringify({ widgets: [{ id: "TIMESERIES", token: "t", request: { n, g } }] })}`,
+        };
+      }
+      const r = JSON.parse(params.get("req") ?? "{}") as {
+        n: number;
+        g: number;
+      };
+      const vals = series(r.n, r.g);
+      return {
+        body: `${prefix}${JSON.stringify({
+          default: {
+            timelineData: times.map((time, i) => ({ time, value: vals[i] })),
+          },
+        })}`,
+      };
+    };
+  };
+
+  it("rescales later groups to the anchor", async () => {
+    // group1 anchor sums 10+20=30; group2 anchor sums 60+60=120 -> factor 0.25
+    server = await serveDir("tests/fixtures/research", {
+      trends: dyn((n, g) =>
+        g === 1
+          ? [
+              Array.from({ length: n }, () => 10),
+              Array.from({ length: n }, () => 20),
+            ]
+          : [
+              [60, 100, 50],
+              [60, 80, 33],
+            ],
+      ),
+    });
+    const r = await runTrends(
+      opts(server.url, ["a", "b", "c", "d", "e", "f", "g"]),
+      http,
+      nullCache,
+    );
+    const v = (t: string, w: string) =>
+      r.rows.find((x) => x.term === t && x.weekStart === w)?.value;
+    expect(v("a", "2024-01-01")).toBe(10);
+    expect(v("f", "2024-01-01")).toBe(25);
+    expect(v("g", "2024-01-08")).toBe(8.3);
+    expect(v("b", "2024-01-01")).toBe(10);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("zero anchor keeps raw values and records an error", async () => {
+    server = await serveDir("tests/fixtures/research", {
+      trends: dyn((n, g) =>
+        g === 1
+          ? [
+              Array.from({ length: n }, () => 10),
+              Array.from({ length: n }, () => 20),
+            ]
+          : [
+              [0, 40, 50],
+              [0, 80, 33],
+            ],
+      ),
+    });
+    const r = await runTrends(
+      opts(server.url, ["a", "b", "c", "d", "e", "f", "g"]),
+      http,
+      nullCache,
+    );
+    expect(r.rows.find((x) => x.term === "f")?.value).toBe(40);
+    expect(r.errors).toEqual([
+      {
+        source: "google-trends",
+        target: "group 2",
+        message: "group 2 not comparable: anchor has no interest",
+      },
+    ]);
+  });
+
+  it.each([")]}'\n", ")]}',\n"])("accepts prefix %j", async (prefix) => {
+    server = await serveDir("tests/fixtures/research", {
+      trends: dyn((n) => [Array(n).fill(1), Array(n).fill(2)], prefix),
+    });
+    const r = await runTrends(opts(server.url, ["a"]), http, nullCache);
+    expect(r.rows).toHaveLength(2);
+  });
+
+  it("keeps all intraday points with full timestamps", async () => {
+    const times = ["1704067200", "1704070800", "1704074400"];
+    server = await serveDir("tests/fixtures/research", {
+      trends: dyn(
+        (n) => [[1], [2], [3]].map((v) => Array(n).fill(v[0])),
+        ")]}'\n",
+        times,
+      ),
+    });
+    const r = await runTrends(
+      { ...opts(server.url, ["a"]), timeframe: "now 7-d" },
+      http,
+      nullCache,
+    );
+    expect(r.rows.map((x) => x.weekStart)).toEqual([
+      "2024-01-01T00:00:00Z",
+      "2024-01-01T01:00:00Z",
+      "2024-01-01T02:00:00Z",
+    ]);
+  });
+
+  it("summary buckets weeks by midpoint", () => {
+    const [a] = summarize([
+      { term: "a", weekStart: "2024-01-29", value: 100 },
+      { term: "a", weekStart: "2024-02-05", value: 10 },
+    ]);
+    expect(a?.peakMonth).toBe(2);
+  });
+
+  it("redirect on the cookie-bearing call is unavailable", async () => {
+    server = await serveDir("tests/fixtures/research", {
+      trends: (p) =>
+        p.endsWith("/explore")
+          ? okTrends(p)
+          : {
+              status: 302,
+              headers: { location: "https://consent.google.com/x" },
+              body: "",
+            },
+    });
+    await expect(runTrends(opts(server.url), http, nullCache)).rejects.toThrow(
+      /^Google Trends unavailable \(unofficial source\): network: redirect to another host/,
+    );
+    expect(server.trendsLog).toHaveLength(2);
+  });
 });

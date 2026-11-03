@@ -246,6 +246,9 @@ export async function runResearchTrends(
   const text = renderData(file, opts.format, TRENDS_COLUMNS, {
     summary: result.summary,
   });
+  if (opts.format === "csv") {
+    warn("mielikki: summary is only included in json/md output");
+  }
   if (opts.output) {
     const target = path.resolve(io.cwd, opts.output);
     try {
@@ -260,6 +263,14 @@ export async function runResearchTrends(
     }
   } else {
     io.write(text);
+  }
+  if (result.errors.length > 0) {
+    warn(
+      result.errors
+        .map((e) => e.message)
+        .join("; ")
+        .slice(0, 200),
+    );
   }
   return 0;
 }
