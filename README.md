@@ -1,8 +1,8 @@
 # Mielikki
 
-Local, offline SEO audit CLI for built static sites. Point it at a build directory (`dist/`), get a list of concrete problems with fixes. Deterministic, no network access, no telemetry, no overall score.
+Local SEO audit CLI for built static sites. Point it at a build directory (`dist/`) or a running site, get a list of concrete problems with fixes. `check` is deterministic (the same files, or the same server responses, give the same report), has no telemetry and no overall score. Directory mode never touches the network; URL mode crawls only the site you point it at; `perf` loads the pages you name in headless Chrome.
 
-> **Status: pre-1.0.** Directory mode (`check`, `rules`, `init`) works. Not implemented yet, planned in later releases: URL mode (crawling a live site and HTTP checks), `perf` (Lighthouse), `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those commands do not exist yet.
+> **Status: pre-1.0 (0.2.0).** Three ways to audit: `check <dir>` reads a built site from disk (offline, deterministic); `check <url>` crawls a running site over HTTP and applies the same rules plus HTTP-specific ones (status codes, redirects, headers, compression, caching); `perf` measures pages with Lighthouse. Not included yet, planned for the next release (plan 3): `research` (Google suggestions, trends, competitors) and `gsc` (Search Console). Those two commands do not exist yet. JavaScript is never executed: Mielikki audits the HTML the server sends.
 
 Mielikki is built for small local-business sites (it ships with Finnish, Swedish and English language support, deepest for Finnish) but the checks are generic: robots.txt and sitemap, titles and headings, canonicals, links, images, structured data, NAP consistency, target queries and more.
 
@@ -80,13 +80,66 @@ mielikki check dist --profile launch --fail-on warning
 
 Options: `--config <path>`, `--profile dev|launch`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info`, `--rules <mask,...>` (e.g. `crawl/*,core/title-*`), `--min-severity` (text format).
 
+## URL mode
+
+```sh
+npx mielikki check http://localhost:4321/          # a dev/preview server
+npx mielikki check https://sahko.example/ --max-pages 50
+```
+
+Use it when you need what only a live server shows: HTTP status codes and redirect chains, http/www/trailing-slash variants, security headers, compression, caching, soft 404s. `check` with an `http://` or `https://` argument crawls the site instead of reading files: robots.txt, sitemaps, then pages level by level from the start URL, only on that host, then the referenced assets (`HEAD`, retried as `GET` when the server answers 403, 405 or 501). It applies the same rules as directory mode, plus the `http/*` rules and `links/redirected`. Results do not depend on response timing: the same server responses give a byte-identical report.
+
+What the crawl does and does not do:
+
+- JavaScript is not executed. Only server-sent HTML is analysed; links, redirects and content added by scripts are invisible (for example a form that redirects to `/kiitos` via JS).
+- Only links found in the HTML and URLs listed in sitemaps are followed. Configured `targets.pages` URLs are also requested. Any other page that nothing links to and no sitemap lists is not discovered; directory mode finds it because it reads every file.
+- URLs with a query string are not crawled; the start URL is the exception (it is requested as given, and the report root drops the query).
+- A link, image or target page is reported as broken or missing only when it was requested and answered with status 400 or above or did not answer (timeout, network error, too large). A URL that redirects is not broken (`links/redirected` and `http/redirect-chain` report redirects). A link or image URL that was never requested (beyond `--max-pages` or `--max-assets`, a query URL, skipped by `--respect-robots`) is not reported. A target page that was not found is reported unless the crawl was cut by `--max-pages` or skipped its URL; `http/crawl-limit` says when the page limit cut the crawl.
+- A start URL that answers with status 400 or above is a usage error (exit 2), as are credentials in the URL, a start URL that is a file (`.xml`, `.jpg`, ...) and an unreachable start URL.
+- A start URL that redirects to another origin (`http://` to `https://`, apex to `www.`, another port or host) is a usage error (exit 2) naming the target: start from the final URL, for example `https://www.example.fi/`.
+
+### Hostname mapping and `config.site`
+
+The site origin used for canonicals, sitemaps and hreflang is `site:` from the config; without it, it is detected from the canonicals found on the pages (as in directory mode), and failing that the crawl origin is used. The host mapping is driven by `config.site` alone and is never auto-detected: when the crawl host differs from `config.site` (typically an audit of `http://localhost:4321` with the production `site: https://example.fi`), URLs on the `config.site` host are mapped onto the crawl host, so a canonical `https://example.fi/palvelut/` is checked as `http://localhost:4321/palvelut/`. No request is ever made to the `config.site` host; the http/www probe for it is skipped too.
+
+### Limits and flags (ignored for a directory)
+
+`--max-pages <n>` (200), `--max-assets <n>` (300), `--concurrency <n>` (4 for local hosts, 2 otherwise), `--delay <ms>` between requests (0 local, 100 otherwise), `--timeout <ms>` per request (15000; `--delay` and `--timeout` at most 2147483647), `--max-bytes <n>` per response (5000000), `--respect-robots`. At most 10 redirects are followed. User agent: `Mielikki/<version> (+https://github.com/KostyaKarrera/mielikki)`.
+
+`--respect-robots` skips URLs that robots.txt disallows for `*`; the start URL is always requested. It is off by default because a site audit should see the pages the owner wants audited, including a pre-launch site with `Disallow: /`; turn it on when you crawl a site you do not run, or want to see what a bot would see.
+
+### Safety
+
+Only audit sites you own or have permission to audit. For a non-local host other than `config.site`, a warning is printed to stderr.
+
+### Known limitations
+
+- An asset that redirects to another host (for example a CDN redirect) is not followed, so its size and headers are not checked; it is not reported as missing.
+- The http/www probes (does `http://` redirect to `https://`, does `www.` resolve) only run for named non-local hosts, not for local hosts or IP addresses.
+- `--max-assets` is a single budget for images, scripts, styles, og:image, linked files and sitemap file entries; assets over the budget are not checked at all, so on large sites raise it.
+
+## Performance (`perf`)
+
+```sh
+npm i -D lighthouse chrome-launcher     # optional peer dependencies, needed only for perf
+npx mielikki perf https://example.fi/ --preset mobile --runs 3
+```
+
+`mielikki perf <url...>` runs Lighthouse (performance category only) in headless Chrome against each URL and reports Core Web Vitals style findings: `perf/lcp`, `perf/cls`, `perf/tbt` (a lab proxy for INP), `perf/fcp`, `perf/opportunity`, a reference-only `perf/score`, and `perf/run-failed` when a URL could not be measured (other URLs keep their results). Thresholds follow web.dev: poor is a warning, needs improvement is info. These rules are listed by `rules` but are never run by `check`.
+
+Requirements: Lighthouse 13 needs Node 22.19 or newer, and Google Chrome (found via `chrome-launcher`, the `CHROME_PATH` environment variable or `--chrome-path`). Use `--no-sandbox` in containers and CI. Lighthouse is found next to Mielikki or, failing that, in the current project's `node_modules`. If Lighthouse or Chrome is missing, `perf` exits with code 2 and an install hint.
+
+Flags: `--preset mobile|desktop` (default mobile), `--runs <n>` (median of n runs, default 1), `--chrome-path`, `--no-sandbox`, `--format text|json|md`, `--output <file>`, `--fail-on error|warning|info` (default error), `--config <path>`.
+
+The numbers are lab metrics from a simulated device and network, not field data from real visitors (that is what Search Console and CrUX report). Unlike `check`, perf output is a measurement: it is not deterministic and differs between runs and machines. Use `--runs 3` or more for steadier medians.
+
 ## Exit codes
 
-| Code | Meaning                                                                                                 |
-| ---- | ------------------------------------------------------------------------------------------------------- |
-| 0    | No findings at or above `--fail-on` (default `error`)                                                   |
-| 1    | At least one finding at or above `--fail-on`                                                            |
-| 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it) |
+| Code | Meaning                                                                                                                        |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | No findings at or above `--fail-on` (default `error`)                                                                          |
+| 1    | At least one finding at or above `--fail-on`                                                                                   |
+| 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it, unreachable start URL) |
 
 ## Use with Claude Code
 

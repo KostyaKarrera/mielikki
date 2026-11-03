@@ -1,7 +1,13 @@
 #!/usr/bin/env node
-import { Command, CommanderError, Option } from "commander";
+import {
+  Command,
+  CommanderError,
+  InvalidArgumentError,
+  Option,
+} from "commander";
 import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
+import { runPerf } from "./commands/perf.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -15,6 +21,26 @@ const format = (): Option =>
     .choices(["text", "json", "md"])
     .default("text");
 
+/** Largest delay a Node.js timer accepts (2^31-1 ms). */
+const MAX_MS = 2_147_483_647;
+
+/** Parser for a non-negative integer option value (min 1 when `positive`, at most `max`). */
+const int =
+  (positive: boolean, max = Number.MAX_SAFE_INTEGER) =>
+  (v: string): number => {
+    const n = Number(v);
+    if (
+      !/^\d+$/.test(v.trim()) ||
+      !Number.isSafeInteger(n) ||
+      (positive && n < 1)
+    )
+      throw new InvalidArgumentError(
+        positive ? "expected a positive integer" : "expected an integer ≥ 0",
+      );
+    if (n > max) throw new InvalidArgumentError(`expected at most ${max}`);
+    return n;
+  };
+
 export function buildProgram(): Command {
   const program = new Command();
   program
@@ -25,8 +51,11 @@ export function buildProgram(): Command {
 
   program
     .command("check")
-    .description("Audit a built site directory")
-    .argument("[dir]", "directory to check (default: config input.dir)")
+    .description("Audit a built site directory or a running site (http(s) URL)")
+    .argument(
+      "[target]",
+      "directory or http(s) URL to check (default: config input.dir)",
+    )
     .option("--config <path>", "path to config file")
     .addOption(
       new Option("--profile <p>", "dev or launch")
@@ -46,10 +75,37 @@ export function buildProgram(): Command {
         .choices(["error", "warning", "info"])
         .default("info"),
     )
+    .option("--max-pages <n>", "URL mode: max pages to crawl (200)", int(true))
+    .option(
+      "--max-assets <n>",
+      "URL mode: max assets to check (300)",
+      int(false),
+    )
+    .option(
+      "--concurrency <n>",
+      "URL mode: parallel requests (4 local, 2 otherwise)",
+      int(true),
+    )
+    .option(
+      "--delay <ms>",
+      "URL mode: pause between requests (0 local, 100 otherwise)",
+      int(false, MAX_MS),
+    )
+    .option(
+      "--timeout <ms>",
+      "URL mode: per-request timeout (15000)",
+      int(true, MAX_MS),
+    )
+    .option(
+      "--max-bytes <n>",
+      "URL mode: max response body size (5000000)",
+      int(true),
+    )
+    .option("--respect-robots", "URL mode: skip URLs disallowed by robots.txt")
     .exitOverride()
-    .action(async (dir: string | undefined, o) => {
+    .action(async (target: string | undefined, o) => {
       process.exitCode = await runCheck(
-        dir,
+        target,
         {
           config: o.config,
           profile: o.profile,
@@ -58,6 +114,66 @@ export function buildProgram(): Command {
           failOn: o.failOn,
           rules: o.rules,
           minSeverity: o.minSeverity,
+          maxPages: o.maxPages,
+          maxAssets: o.maxAssets,
+          concurrency: o.concurrency,
+          delay: o.delay,
+          timeout: o.timeout,
+          maxBytes: o.maxBytes,
+          respectRobots: o.respectRobots === true,
+        },
+        {
+          cwd: process.cwd(),
+          isTTY: process.stdout.isTTY === true,
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  program
+    .command("perf")
+    .description(
+      "Measure Lighthouse performance of running pages (needs lighthouse and chrome-launcher installed; results vary between runs)",
+    )
+    .argument("<url...>", "http(s) page URLs to measure")
+    .option("--config <path>", "path to config file")
+    .addOption(
+      new Option("--preset <p>", "mobile or desktop")
+        .choices(["mobile", "desktop"])
+        .default("mobile"),
+    )
+    .option("--runs <n>", "runs per URL; the median is reported", int(true), 1)
+    .option(
+      "--chrome-path <path>",
+      "Chrome executable (default: CHROME_PATH or autodetect)",
+    )
+    .option("--no-sandbox", "start Chrome with --no-sandbox (containers, CI)")
+    .addOption(format())
+    .option("--output <file>", "write the report to a file")
+    .addOption(
+      new Option("--fail-on <sev>", "exit 1 on findings at or above")
+        .choices(["error", "warning", "info"])
+        .default("error"),
+    )
+    .exitOverride()
+    .action(async (urls: string[], o) => {
+      process.exitCode = await runPerf(
+        urls,
+        {
+          config: o.config,
+          preset: o.preset,
+          runs: o.runs,
+          chromePath: o.chromePath,
+          // commander's --no-sandbox sets `sandbox` (default true)
+          noSandbox: o.sandbox === false,
+          format: o.format,
+          output: o.output,
+          failOn: o.failOn,
         },
         {
           cwd: process.cwd(),

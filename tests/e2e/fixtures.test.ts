@@ -90,7 +90,12 @@ describe("broken fixtures", () => {
   it("every launch-blocking rule fires as an error in some fixture", () => {
     // schema/validation is not launchBlocking; it errors only on invalid structured data
     const blocking = allRules
-      .filter((r) => r.meta.launchBlocking && r.meta.id !== "schema/validation")
+      .filter(
+        (r) =>
+          r.meta.launchBlocking &&
+          r.meta.inputs.includes("dir") && // url-only rules are covered in tests/unit/rules/http
+          r.meta.id !== "schema/validation",
+      )
       .map((r) => r.meta.id)
       .sort();
     expect(blocking.length).toBeGreaterThan(20);

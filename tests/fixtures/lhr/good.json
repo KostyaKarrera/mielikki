@@ -1,0 +1,42 @@
+{
+  "finalDisplayedUrl": "https://example.test/",
+  "configSettings": {
+    "formFactor": "mobile"
+  },
+  "categories": {
+    "performance": {
+      "score": 0.98
+    }
+  },
+  "audits": {
+    "largest-contentful-paint": {
+      "id": "largest-contentful-paint",
+      "title": "Largest Contentful Paint",
+      "score": 0.5,
+      "numericValue": 1800,
+      "displayValue": "1.8 s"
+    },
+    "cumulative-layout-shift": {
+      "id": "cumulative-layout-shift",
+      "title": "Cumulative Layout Shift",
+      "score": 0.5,
+      "numericValue": 0.02,
+      "displayValue": "0.02"
+    },
+    "total-blocking-time": {
+      "id": "total-blocking-time",
+      "title": "Total Blocking Time",
+      "score": 0.5,
+      "numericValue": 90,
+      "displayValue": "90 ms"
+    },
+    "first-contentful-paint": {
+      "id": "first-contentful-paint",
+      "title": "First Contentful Paint",
+      "score": 0.5,
+      "numericValue": 1200,
+      "displayValue": "1.2 s"
+    }
+  },
+  "runWarnings": []
+}

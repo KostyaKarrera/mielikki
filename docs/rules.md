@@ -41,6 +41,22 @@
 | crawl/sitemap-missing | error | yes | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview |
 | crawl/sitemap-missing-page | warning | no | crawl/site | https://developers.google.com/search/docs/crawling-indexing/sitemaps/overview |
 | crawl/thin-html | warning | no | crawl/page | https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics |
+| http/cache-headers | info | no | http/site | https://web.dev/articles/http-cache |
+| http/canonical-redirects | warning | yes | http/page | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/compression | warning | no | http/site | https://web.dev/articles/reduce-network-payloads-using-text-compression |
+| http/crawl-limit | info | no | http/site | squirrelscan:crawl/limit |
+| http/host-variant | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/https-redirect | warning | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/https |
+| http/mixed-content | warning | no | http/page | https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content |
+| http/not-found-page | info | no | http/site | https://developers.google.com/search/docs/crawling-indexing/http-network-errors |
+| http/not-https | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/https |
+| http/redirect-chain | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/site-move-with-url-changes |
+| http/redirect-temporary | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/301-redirects |
+| http/robots-status | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt |
+| http/security-headers | info | no | http/site | https://developer.mozilla.org/en-US/docs/Web/Security |
+| http/slash-variants | warning | no | http/site | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
+| http/soft-404 | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/http-network-errors#soft-404-errors |
+| http/unreachable | error | yes | http/site | https://developers.google.com/search/docs/crawling-indexing/http-network-errors |
 | i18n/hreflang | warning | no | i18n/page | https://developers.google.com/search/docs/specialty/international/localized-versions |
 | images/alt-missing | warning | no | images/page | https://developers.google.com/search/docs/appearance/google-images |
 | images/broken | error | yes | images/page | squirrelscan:images/broken-images |
@@ -55,6 +71,7 @@
 | links/empty-anchor | warning | no | links/page | https://developers.google.com/search/docs/crawling-indexing/links-crawlable |
 | links/generic-anchor | info | no | links/page | https://developers.google.com/search/docs/crawling-indexing/links-crawlable |
 | links/insecure-external | info | no | links/page | mielikki:original |
+| links/redirected | warning | no | links/site | squirrelscan:links/redirect-links |
 | links/trailing-slash | info | no | links/page | https://developers.google.com/search/docs/crawling-indexing/consolidate-duplicate-urls |
 | local/name-consistency | info | no | local/site | claude-seo:skills/seo-local/SKILL.md |
 | local/phone-consistency | warning | no | local/site | claude-seo:skills/seo-local/SKILL.md |
@@ -62,6 +79,13 @@
 | local/tel-link | warning | no | local/page | claude-seo:skills/seo-local/SKILL.md |
 | mobile/viewport-missing | warning | no | mobile/page | https://developers.google.com/search/mobile-sites/mobile-first-indexing |
 | mobile/zoom-disabled | warning | no | mobile/page | https://developer.chrome.com/docs/lighthouse/accessibility/meta-viewport |
+| perf/cls | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/fcp | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/lcp | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
+| perf/opportunity | info | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/run-failed | warning | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/score | info | no | perf/page (run by perf command) | https://developer.chrome.com/docs/lighthouse/performance/ |
+| perf/tbt | warning | no | perf/page (run by perf command) | https://web.dev/articles/vitals |
 | schema/area-served | warning | no | schema/site | https://developers.google.com/search/docs/appearance/structured-data/local-business |
 | schema/business-generic-type | warning | no | schema/site | https://schema.org/LocalBusiness |
 | schema/business-missing | error | yes | schema/site | https://developers.google.com/search/docs/appearance/structured-data/local-business |

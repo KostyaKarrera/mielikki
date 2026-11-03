@@ -1,6 +1,13 @@
 import { type CheerioAPI, load } from "cheerio";
 import type { AnyNode } from "domhandler";
-import type { Heading, Img, JsonLdBlock, Link, Page } from "../model/types.js";
+import type {
+  Heading,
+  Img,
+  JsonLdBlock,
+  Link,
+  Page,
+  Resource,
+} from "../model/types.js";
 
 const CHROME_TAGS = ["header", "nav", "footer"];
 const CHROME = CHROME_TAGS.join(", ");
@@ -131,6 +138,36 @@ function blockText(
   return { text: collapse(parts.join("")), firstParagraph };
 }
 
+function parseResources($: CheerioAPI): Resource[] {
+  const out: Resource[] = [];
+  $(
+    "script[src], link[href], iframe[src], video[src], audio[src], source[src]",
+  ).each((_, el) => {
+    const $el = $(el);
+    const tag = (el as { tagName: string }).tagName.toLowerCase();
+    if (tag === "script") {
+      out.push({ kind: "script", src: ($el.attr("src") ?? "").trim() });
+    } else if (tag === "link") {
+      const rel = ($el.attr("rel") ?? "").toLowerCase().split(/\s+/);
+      const src = ($el.attr("href") ?? "").trim();
+      if (rel.includes("stylesheet")) out.push({ kind: "style", src });
+      else if (rel.includes("modulepreload")) out.push({ kind: "script", src });
+      else if (rel.includes("preload")) {
+        const as = ($el.attr("as") ?? "").trim().toLowerCase();
+        out.push({
+          kind: as === "script" ? "script" : as === "style" ? "style" : "other",
+          src,
+        });
+      }
+    } else if (tag === "iframe") {
+      out.push({ kind: "iframe", src: ($el.attr("src") ?? "").trim() });
+    } else {
+      out.push({ kind: "media", src: ($el.attr("src") ?? "").trim() });
+    }
+  });
+  return out;
+}
+
 export function parsePage(html: string, key: string, file?: string): Page {
   const $ = load(html.replace(/^\uFEFF/, ""));
 
@@ -247,5 +284,6 @@ export function parsePage(html: string, key: string, file?: string): Page {
     tel,
     mailto,
     ...parseForms($),
+    resources: parseResources($),
   };
 }

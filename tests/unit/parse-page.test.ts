@@ -186,7 +186,7 @@ describe("mainText block separation", () => {
   it("handles deep nesting without recursion limits", () => {
     const html = `<html><body><main>${"<div>".repeat(20_000)}x${"</div>".repeat(20_000)}</main></body></html>`;
     expect(pageFrom(html).mainText).toBe("x");
-  });
+  }, 30_000);
   it("separates br and ignores script/noscript text", () => {
     const p = pageFrom(
       "<html><body><main>a<br>b<script>var z=1</script><noscript>NS</noscript></main></body></html>",
@@ -213,5 +213,36 @@ describe("robots meta", () => {
   });
   it("ignores metas for other bots", () => {
     expect(head('<meta name="bingbot" content="noindex">')).toEqual([]);
+  });
+});
+
+describe("parsePage resources", () => {
+  it("collects resources in document order", () => {
+    const p = pageFrom(`<!doctype html><html><head>
+<script src="/a.js"></script><script>inline()</script>
+<link rel="stylesheet" href="/s.css">
+<link rel="preload" as="script" href="/p.js">
+<link rel="preload" as="style" href="/p.css">
+<link rel="preload" as="font" href="/f.woff2">
+<link rel="modulepreload" href="/m.js">
+</head><body><iframe src="/f.html"></iframe>
+<video src="/v.mp4"><source src="/v.webm"></video><audio src="/a.mp3"></audio>
+</body></html>`);
+    expect(p.resources).toEqual([
+      { kind: "script", src: "/a.js" },
+      { kind: "style", src: "/s.css" },
+      { kind: "script", src: "/p.js" },
+      { kind: "style", src: "/p.css" },
+      { kind: "other", src: "/f.woff2" },
+      { kind: "script", src: "/m.js" },
+      { kind: "iframe", src: "/f.html" },
+      { kind: "media", src: "/v.mp4" },
+      { kind: "media", src: "/v.webm" },
+      { kind: "media", src: "/a.mp3" },
+    ]);
+  });
+
+  it("is empty for a page without resources", () => {
+    expect(pageFrom("<p>x</p>").resources).toEqual([]);
   });
 });

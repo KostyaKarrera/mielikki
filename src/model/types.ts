@@ -35,9 +35,47 @@ export interface Heading {
   text: string;
 }
 
+export interface Hop {
+  url: string;
+  status: number;
+  location?: string;
+}
+
+export interface Fetched {
+  url: string;
+  status: number;
+  headers: Record<string, string>; // lowercase names
+  contentType?: string;
+  bytes: number;
+  body?: string;
+}
+
+export type StopReason =
+  | "left-site"
+  | "redirect-loop"
+  | "too-many-redirects"
+  | "timeout"
+  | "too-large"
+  | "network";
+
+/** Invariant: if `stop` is set, `final` is unset. */
+export interface FetchRecord {
+  requested: string;
+  hops: Hop[];
+  final?: Fetched;
+  stop?: StopReason;
+  detail?: string;
+}
+
+export interface Resource {
+  kind: "script" | "style" | "iframe" | "media" | "other";
+  src: string;
+}
+
 export interface Page {
   key: string; // pageKey (Task 4), e.g. '/palvelut/'
   file?: string; // path relative to dist
+  url?: string; // final absolute URL (URL mode)
   status?: number;
   headers?: Record<string, string>; // URL mode (plan 2)
   html: string;
@@ -64,12 +102,14 @@ export interface Page {
   mailto: string[];
   formControls: { tag: string; type?: string; labelled: boolean }[];
   buttons: { named: boolean }[];
+  resources: Resource[];
 }
 
 export interface Asset {
   key: string;
   bytes: number;
   ext: string; // lowercase, without the dot ('jpg')
+  headers?: Record<string, string>; // URL mode, lowercase names
 }
 
 export interface Site {
@@ -85,4 +125,8 @@ export interface Site {
   inlinks: Map<string, string[]>; // key -> page keys linking from content (not inChrome)
   inlinksAll: Map<string, string[]>; // including inChrome
   depth: Map<string, number>; // BFS from '/' over all internal links
+  origin?: string; // crawl host (URL mode)
+  responses?: Map<string, FetchRecord>; // URL mode
+  /** URL mode: `skipped` lists every discovered URL that was not requested, sorted. */
+  crawl?: { limitReached: boolean; skipped: string[] };
 }
