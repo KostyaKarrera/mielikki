@@ -40,8 +40,10 @@ export function createDiskCache(
     },
     async set(key, value) {
       try {
-        await mkdir(dir, { recursive: true });
-        await writeFile(fileFor(key), JSON.stringify({ at: now(), value }));
+        await mkdir(dir, { recursive: true, mode: 0o700 });
+        await writeFile(fileFor(key), JSON.stringify({ at: now(), value }), {
+          mode: 0o600,
+        });
       } catch {
         // cache is best-effort: a write failure must not fail the command
       }

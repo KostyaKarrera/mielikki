@@ -32,6 +32,10 @@ describe("csvCell", () => {
     expect(csvCell(undefined)).toBe("");
     expect(csvCell(null)).toBe("");
   });
+  it("prefixes tab and CR starts", () => {
+    expect(csvCell("\tx")).toBe("'\tx");
+    expect(csvCell("\rx")).toBe('"\'\rx"');
+  });
   it("quotes after injection prefix when needed", () => {
     expect(csvCell("=a,b")).toBe('"\'=a,b"');
   });
@@ -69,5 +73,27 @@ describe("renderData", () => {
     expect(out).toBe(
       "| query | count |\n| --- | --- |\n| sähkö\\|asentaja | 2 |\n| =cmd | 1 |\n",
     );
+  });
+  it("md escapes markup characters and flattens line breaks", () => {
+    const f: DataFile<{ t: string }> = {
+      kind: "suggest",
+      rows: [{ t: "a\\b `c` <i> [l] x|y\r\nz\rw" }],
+      errors: [],
+    };
+    expect(renderData(f, "md", ["t"])).toBe(
+      "| t |\n| --- |\n| a\\\\b \\`c\\` \\<i\\> \\[l\\] x\\|y z w |\n",
+    );
+  });
+  it("json normalises undefined cells to null", () => {
+    const f: DataFile<{ a?: string; b: number }> = {
+      kind: "trends",
+      rows: [{ b: 1 }],
+      errors: [],
+    };
+    const parsed = JSON.parse(renderData(f, "json", ["a", "b"])) as {
+      rows: object[];
+    };
+    expect(parsed.rows[0]).toEqual({ a: null, b: 1 });
+    expect(Object.keys(parsed.rows[0] as object)).toEqual(["a", "b"]);
   });
 });

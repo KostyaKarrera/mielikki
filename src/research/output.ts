@@ -9,7 +9,7 @@ export function csvCell(v: unknown): string {
 
 function mdCell(v: unknown): string {
   const s = v === undefined || v === null ? "" : String(v);
-  return s.replaceAll("|", "\\|").replace(/\r?\n/g, " ");
+  return s.replace(/\r\n|\r|\n/g, " ").replace(/[\\`|<>[\]]/g, (c) => `\\${c}`);
 }
 
 export function renderData<T extends object>(
@@ -33,7 +33,7 @@ export function renderData<T extends object>(
       };
     }
     out.rows = file.rows.map((r) =>
-      Object.fromEntries(columns.map((c) => [c, cell(r, c)])),
+      Object.fromEntries(columns.map((c) => [c, cell(r, c) ?? null])),
     );
     out.errors = file.errors.map((e) => ({
       source: e.source,

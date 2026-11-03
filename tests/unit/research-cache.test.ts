@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -46,6 +46,14 @@ describe("createDiskCache", () => {
     expect(files[0]).not.toContain("/");
     expect(files[0]).not.toContain("x/a/b");
     expect(files[0]).toMatch(/^[0-9a-f]{64}/);
+  });
+  it("writes files 0600 and directory 0700", async () => {
+    const dir = join(await tmp(), "c");
+    const cache = createDiskCache(dir, 1000);
+    await cache.set("k", "v");
+    const [file] = await readdir(dir);
+    expect((await stat(dir)).mode & 0o777).toBe(0o700);
+    expect((await stat(join(dir, file as string))).mode & 0o777).toBe(0o600);
   });
   it("creates the cache directory on set", async () => {
     const dir = join(await tmp(), "a", "b");
