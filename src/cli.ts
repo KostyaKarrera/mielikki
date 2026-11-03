@@ -6,7 +6,7 @@ import {
   Option,
 } from "commander";
 import { runCheck } from "./commands/check.js";
-import { runGscAuth } from "./commands/gsc.js";
+import { runGscAuth, runGscInspect, runGscQueries } from "./commands/gsc.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
 import {
@@ -394,6 +394,96 @@ export function buildProgram(): Command {
             process.stderr.write(`${s}\n`);
           },
         },
+      );
+    });
+
+  const gscIO = () => ({
+    cwd: process.cwd(),
+    write: (s: string) => {
+      process.stdout.write(s);
+    },
+    warn: (s: string) => {
+      process.stderr.write(`${s}\n`);
+    },
+  });
+  const dataFormat = (): Option =>
+    new Option("--format <fmt>", "output format")
+      .choices(["json", "csv", "md"])
+      .default("json");
+  gsc
+    .command("inspect")
+    .description(
+      "URL Inspection for the pages of the sitemap (sends requests to searchconsole.googleapis.com and the config.site host)",
+    )
+    .option(
+      "--site <siteUrl>",
+      "Search Console property (default: config.site/)",
+    )
+    .addOption(
+      new Option("--from <src>", "where the URL list comes from")
+        .choices(["sitemap", "targets"])
+        .default("sitemap"),
+    )
+    .option(
+      "--limit <n>",
+      "pages to inspect (at most 2000 a day)",
+      int(true, 2000),
+      200,
+    )
+    .addOption(dataFormat())
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscInspect(
+        {
+          config: o.config,
+          site: o.site,
+          from: o.from,
+          limit: o.limit,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+        },
+        gscIO(),
+      );
+    });
+  gsc
+    .command("queries")
+    .description(
+      "Search queries and pages from Search Analytics (sends requests to www.googleapis.com)",
+    )
+    .option(
+      "--site <siteUrl>",
+      "Search Console property (default: config.site/)",
+    )
+    .option(
+      "--days <n>",
+      "period in days, ending 2 days ago",
+      int(true, 480),
+      28,
+    )
+    .option("--row-limit <n>", "rows to fetch", int(true, 25000), 1000)
+    .option("--by-target", "coverage of targets.pages by queries")
+    .addOption(dataFormat())
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscQueries(
+        {
+          config: o.config,
+          site: o.site,
+          days: o.days,
+          rowLimit: o.rowLimit,
+          byTarget: o.byTarget === true,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+        },
+        gscIO(),
       );
     });
 

@@ -32,6 +32,16 @@ export interface Behaviors {
     status?: number;
     body: string;
   };
+  /**
+   * Fake Search Console API: POST /v1/urlInspection/index:inspect and
+   * POST /webmasters/v3/sites/<encoded siteUrl>/searchAnalytics/query.
+   * `n` is the 1-based call number per route.
+   */
+  gsc?: (
+    route: "inspect" | "analytics",
+    body: Record<string, unknown>,
+    ctx: { n: number; siteUrl: string; auth: string },
+  ) => { status?: number; body: string };
   /** Dynamic pages (checked first): return undefined to fall through to files. */
   dynamic?: (pathname: string) =>
     | {
@@ -61,6 +71,13 @@ export interface TestServer {
   trendsCookies: string[];
   /** Parsed form body of every POST /token call, in arrival order. */
   oauthLog: URLSearchParams[];
+  /** Every fake Search Console call: route, raw path, Authorization header, parsed body. */
+  gscLog: {
+    route: "inspect" | "analytics";
+    path: string;
+    auth: string;
+    body: Record<string, unknown>;
+  }[];
 }
 
 const TYPES: Record<string, string> = {
@@ -92,6 +109,7 @@ export async function serveDir(
   const trendsLog: string[] = [];
   const trendsCookies: string[] = [];
   const oauthLog: URLSearchParams[] = [];
+  const gscLog: TestServer["gscLog"] = [];
   const timers = new Set<NodeJS.Timeout>();
 
   const handle = async (
@@ -133,6 +151,39 @@ export async function serveDir(
       const form = new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
       oauthLog.push(form);
       const r = b.oauth(form);
+      res.writeHead(r.status ?? 200, {
+        "content-type": "application/json; charset=utf-8",
+        "content-length": String(Buffer.byteLength(r.body)),
+      });
+      res.end(r.body);
+      return;
+    }
+
+    const gscRoute =
+      pathname === "/v1/urlInspection/index:inspect"
+        ? "inspect"
+        : /^\/webmasters\/v3\/sites\/[^/]+\/searchAnalytics\/query$/.test(
+              pathname,
+            )
+          ? "analytics"
+          : undefined;
+    if (gscRoute && req.method === "POST" && b.gsc) {
+      const chunks: Buffer[] = [];
+      for await (const c of req) chunks.push(c as Buffer);
+      let body: Record<string, unknown> = {};
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        // leave empty
+      }
+      const auth = String(req.headers.authorization ?? "");
+      gscLog.push({ route: gscRoute, path: pathname, auth, body });
+      const n = gscLog.filter((l) => l.route === gscRoute).length;
+      const siteUrl =
+        gscRoute === "inspect"
+          ? String(body.siteUrl ?? "")
+          : decodeURIComponent(pathname.split("/")[4] ?? "");
+      const r = b.gsc(gscRoute, body, { n, siteUrl, auth });
       res.writeHead(r.status ?? 200, {
         "content-type": "application/json; charset=utf-8",
         "content-length": String(Buffer.byteLength(r.body)),
@@ -263,6 +314,7 @@ export async function serveDir(
     trendsLog,
     trendsCookies,
     oauthLog,
+    gscLog,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);

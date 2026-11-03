@@ -10,7 +10,12 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runGscAuth } from "../../src/commands/gsc.js";
+import {
+  runGscAuth,
+  runGscInspect,
+  runGscQueries,
+} from "../../src/commands/gsc.js";
+import { saveToken } from "../../src/gsc/token-store.js";
 import { createHttpJson } from "../../src/research/http.js";
 import { serveDir, type TestServer } from "../support/server.js";
 
@@ -263,5 +268,259 @@ describe("gsc auth", () => {
     });
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("Desktop app");
+  });
+});
+
+describe("gsc inspect and queries", () => {
+  const ACCESS = "ACCESS-tok-INSPECT-99";
+  const REFRESH = "REFRESH-tok-INSPECT-99";
+  const CLIENT_SECRET = "CLIENT-secret-INSPECT-99";
+  const inspectOpts = {
+    from: "sitemap" as const,
+    limit: 200,
+    format: "json" as const,
+    noMeta: true,
+  };
+  const queryOpts = {
+    days: 28,
+    rowLimit: 1000,
+    byTarget: false,
+    format: "json" as const,
+    noMeta: true,
+  };
+
+  const indexed = (verdict: string) =>
+    JSON.stringify({
+      inspectionResult: {
+        indexStatusResult: {
+          verdict,
+          coverageState:
+            verdict === "PASS" ? "Indexed" : "Crawled - not indexed",
+          googleCanonical: "https://example.fi/x/",
+        },
+      },
+    });
+
+  async function setup(
+    gsc: NonNullable<Parameters<typeof serveDir>[1]>["gsc"],
+    configExtra = "",
+  ) {
+    const h = harness();
+    await saveToken(h.token, {
+      clientId: "cid",
+      clientSecret: CLIENT_SECRET,
+      refreshToken: REFRESH,
+      source: "oauth-client",
+    });
+    const srv = await serveDir(h.tmp, {
+      gsc,
+      oauth: () => ({
+        body: JSON.stringify({ access_token: ACCESS, scope: SC }),
+      }),
+    });
+    server = srv;
+    const site = srv.url;
+    const loc = (p: string) => `<url><loc>${site}${p}</loc></url>`;
+    srv.requests.length = 0;
+    writeFileSync(
+      path.join(h.tmp, "mielikki.config.yaml"),
+      `site: ${site}\nlanguage: fi\n${configExtra}`,
+    );
+    writeFileSync(
+      path.join(h.tmp, "sitemap.xml"),
+      `<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${loc("/a/")}${loc("/b/")}${loc("/c/")}${loc("/d/")}<url><loc>https://evil.example/z/</loc></url></urlset>`,
+    );
+    const deps = {
+      http,
+      tokenUri: `${srv.url}/token`,
+      inspectBase: srv.url,
+      analyticsBase: srv.url,
+      sleep: async () => {},
+      now: () => new Date("2026-11-03T10:00:00Z"),
+    };
+    const io = { ...h.io, cwd: h.tmp };
+    return { h, srv, deps, io };
+  }
+
+  const noLeak = (text: string) => {
+    for (const s of [ACCESS, REFRESH, CLIENT_SECRET])
+      expect(text).not.toContain(s);
+  };
+
+  it("inspect writes one row per sitemap URL, summarises on stderr, stays on allowed hosts", async () => {
+    const { h, srv, deps, io } = await setup((_r, body) => ({
+      body: indexed(
+        String(body.inspectionUrl).endsWith("/b/") ? "NEUTRAL" : "PASS",
+      ),
+    }));
+    const code = await runGscInspect(
+      { ...inspectOpts, output: "out/inspect.json" },
+      io,
+      deps,
+    );
+    expect(code).toBe(0);
+    const file = JSON.parse(
+      readFileSync(path.join(h.tmp, "out/inspect.json"), "utf8"),
+    );
+    expect(file.kind).toBe("gsc-inspect");
+    expect(file.rows.map((r: { url: string }) => r.url)).toEqual(
+      ["/a/", "/b/", "/c/", "/d/"].map((p) => srv.url + p),
+    );
+    expect(file.rows[1].verdict).toBe("NEUTRAL");
+    expect(h.err()).toContain("проверено 4 из 4");
+    expect(h.err()).toContain("NEUTRAL 1");
+    expect(h.err()).toContain("PASS 3");
+    expect(h.err()).toContain(`${srv.url}/b/`);
+    expect(h.out()).toBe("");
+    for (const l of srv.gscLog) {
+      expect(l.auth).toBe(`Bearer ${ACCESS}`);
+      expect(l.body.siteUrl).toBe(`${srv.url}/`);
+      expect(l.body.languageCode).toBe("fi");
+    }
+    expect(
+      srv.requests.filter(
+        (p) => p !== "/token" && p !== "/v1/urlInspection/index:inspect",
+      ),
+    ).toEqual(["/sitemap.xml"]);
+    noLeak(
+      h.out() +
+        h.err() +
+        readFileSync(path.join(h.tmp, "out/inspect.json"), "utf8"),
+    );
+    expect(existsSync(path.join(h.tmp, ".mielikki"))).toBe(false);
+  });
+
+  it("quota on the 3rd call: exit 1, partial file with 2 rows", async () => {
+    const { h, deps, io } = await setup((_r, _b, ctx) =>
+      ctx.n === 3
+        ? {
+            status: 429,
+            body: JSON.stringify({
+              error: { status: "RESOURCE_EXHAUSTED", message: ACCESS },
+            }),
+          }
+        : { body: indexed("PASS") },
+    );
+    const code = await runGscInspect(
+      { ...inspectOpts, output: "p.json" },
+      io,
+      deps,
+    );
+    expect(code).toBe(1);
+    const file = JSON.parse(readFileSync(path.join(h.tmp, "p.json"), "utf8"));
+    expect(file.rows).toHaveLength(2);
+    expect(h.err()).toContain(
+      "проверено 2 из 4; квота обновляется раз в сутки",
+    );
+    noLeak(h.out() + h.err());
+  });
+
+  it("403 gives the access hint with exit 2; no token gives setup help", async () => {
+    const { h, deps, io } = await setup(() => ({
+      status: 403,
+      body: `{"error":"${ACCESS}"}`,
+    }));
+    expect(await runGscInspect(inspectOpts, io, deps)).toBe(2);
+    expect(h.err()).toContain("Нет доступа к ресурсу");
+    noLeak(h.out() + h.err());
+
+    const h2 = harness();
+    writeFileSync(
+      path.join(h2.tmp, "mielikki.config.yaml"),
+      "site: http://127.0.0.1:1\n",
+    );
+    expect(
+      await runGscQueries(queryOpts, { ...h2.io, cwd: h2.tmp }, { http }),
+    ).toBe(2);
+    expect(h2.err()).toContain("gsc auth");
+  });
+
+  it("queries encodes sc-domain, uses UTC dates ending 2 days ago and prints target coverage", async () => {
+    const { h, srv, deps, io } = await setup(
+      () => ({
+        body: JSON.stringify({
+          rows: [
+            {
+              keys: ["sähköasennus loviisassa", "/"],
+              clicks: 2,
+              impressions: 30,
+              ctr: 0.06,
+              position: 8,
+            },
+            {
+              keys: ["sähköasennus porvoo", "/porvoo/"],
+              clicks: 0,
+              impressions: 5,
+              ctr: 0,
+              position: 30,
+            },
+          ],
+        }),
+      }),
+      "targets:\n  pages:\n    - url: /loviisa/\n      primary: sähköasennukset loviisa\n    - url: /kerava/\n      primary: sähköasennukset kerava\n",
+    );
+    const code = await runGscQueries(
+      { ...queryOpts, site: "sc-domain:example.fi", byTarget: true },
+      io,
+      deps,
+    );
+    expect(code).toBe(0);
+    expect(srv.gscLog[0]?.path).toBe(
+      "/webmasters/v3/sites/sc-domain%3Aexample.fi/searchAnalytics/query",
+    );
+    expect(srv.gscLog[0]?.body).toMatchObject({
+      startDate: "2026-10-05",
+      endDate: "2026-11-01",
+      dimensions: ["query", "page"],
+      rowLimit: 1000,
+    });
+    const out = JSON.parse(h.out());
+    expect(
+      out.rows.map((r: { target: string; status: string }) => [
+        r.target,
+        r.status,
+      ]),
+    ).toEqual([
+      ["/loviisa/", "other-page"],
+      ["/kerava/", "no-data"],
+    ]);
+    expect(out.rows[0].topQueries).toBe("sähköasennus loviisassa");
+    noLeak(h.out() + h.err());
+  });
+
+  it("queries without --by-target lists rows sorted by impressions", async () => {
+    const { h, deps, io } = await setup(() => ({
+      body: JSON.stringify({
+        rows: [
+          { keys: ["b", "/"], clicks: 1, impressions: 1, ctr: 1, position: 1 },
+          {
+            keys: ["a", "/"],
+            clicks: 1,
+            impressions: 9,
+            ctr: 0.1,
+            position: 2,
+          },
+        ],
+      }),
+    }));
+    expect(await runGscQueries(queryOpts, io, deps)).toBe(0);
+    expect(
+      JSON.parse(h.out()).rows.map((r: { query: string }) => r.query),
+    ).toEqual(["a", "b"]);
+  });
+
+  it("CLI wires gsc inspect and queries (exit 2 without config site/token)", () => {
+    tmp = mkdtempSync(path.join(os.tmpdir(), "mielikki-gsc-cli-"));
+    const r = spawnSync("node", [CLI, "gsc", "queries"], {
+      cwd: tmp,
+      encoding: "utf8",
+      env: { ...process.env, XDG_CONFIG_HOME: path.join(tmp, "c"), HOME: tmp },
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("--site");
+    const h = spawnSync("node", [CLI, "gsc", "inspect", "--help"], {
+      encoding: "utf8",
+    });
+    expect(h.stdout).toContain("--limit");
   });
 });

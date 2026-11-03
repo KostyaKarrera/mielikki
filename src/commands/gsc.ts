@@ -1,8 +1,19 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
+import { loadConfig } from "../config/load.js";
 import { UsageError } from "../errors.js";
+import {
+  createGscClient,
+  GscQuotaError,
+  type InspectRow,
+  type QueryRow,
+} from "../gsc/api.js";
+import { matchQueriesToTargets } from "../gsc/match.js";
 import {
   DEFAULT_TOKEN_URI,
   defaultOpenUrl,
+  getAccessToken,
   loadAdc,
   readClientFile,
   refreshAccess,
@@ -10,8 +21,14 @@ import {
   SCOPE,
 } from "../gsc/oauth.js";
 import { tokenPath } from "../gsc/paths.js";
+import { redact } from "../gsc/redact.js";
 import { clearToken, loadToken, saveToken } from "../gsc/token-store.js";
+import { getLang } from "../lang/index.js";
+import { createFetcher, type Fetcher } from "../net/fetch.js";
+import { parseSitemap } from "../parse/sitemap.js";
 import { createHttpJson, type HttpJson } from "../research/http.js";
+import { renderData } from "../research/output.js";
+import type { DataFile, ResearchError } from "../research/types.js";
 import { VERSION } from "../version.js";
 
 export interface GscIO {
@@ -36,6 +53,12 @@ export interface GscDeps {
   authUri?: string;
   tokenUri?: string;
   timeoutMs?: number;
+  inspectBase?: string;
+  analyticsBase?: string;
+  /** Sitemap fetcher (default: real one restricted to the config.site host). */
+  fetcher?: Fetcher;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => Date;
 }
 
 const HELP = [
@@ -129,5 +152,421 @@ export async function runGscAuth(
     }
     warn("mielikki: не удалось выполнить gsc auth");
     return 2;
+  }
+}
+
+export interface GscRunIO extends GscIO {
+  cwd: string;
+}
+
+export interface GscInspectOptions {
+  config?: string;
+  site?: string;
+  from: "sitemap" | "targets";
+  limit: number;
+  format: "json" | "csv" | "md";
+  output?: string;
+  noMeta: boolean;
+}
+
+export interface GscQueriesOptions {
+  config?: string;
+  site?: string;
+  days: number;
+  rowLimit: number;
+  byTarget: boolean;
+  format: "json" | "csv" | "md";
+  output?: string;
+  noMeta: boolean;
+}
+
+/** Interval between Search Console calls (600 per minute at most). */
+const MIN_INTERVAL_MS = 100;
+/** Search Console data lags about two days. */
+const LAG_DAYS = 2;
+const MAX_SITEMAPS = 20;
+
+const INSPECT_COLUMNS: (keyof InspectRow & string)[] = [
+  "url",
+  "verdict",
+  "coverageState",
+  "indexingState",
+  "robotsTxtState",
+  "pageFetchState",
+  "googleCanonical",
+  "userCanonical",
+  "lastCrawlTime",
+];
+const QUERY_COLUMNS: (keyof QueryRow & string)[] = [
+  "query",
+  "page",
+  "clicks",
+  "impressions",
+  "ctr",
+  "position",
+];
+
+interface TargetRow {
+  target: string;
+  primary: string;
+  status: string;
+  queries: number;
+  impressions: number;
+  clicks: number;
+  bestPosition: number | null;
+  topQueries: string;
+}
+const TARGET_COLUMNS: (keyof TargetRow & string)[] = [
+  "target",
+  "primary",
+  "status",
+  "queries",
+  "impressions",
+  "clicks",
+  "bestPosition",
+  "topQueries",
+];
+
+const clean = (s: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: strips control characters from shown text
+  s.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 300);
+
+interface Access {
+  token: string;
+  secrets: string[];
+}
+
+/** Stored token, then ADC; the access token lives only in memory. */
+async function resolveAccess(io: GscIO, deps: GscDeps): Promise<Access> {
+  const env = io.env ?? process.env;
+  const home = io.home ?? os.homedir();
+  const stored =
+    (await loadToken(tokenPath(env, home))) ?? (await loadAdc(env, home));
+  if (!stored) throw new UsageError(HELP);
+  const token = await getAccessToken(
+    stored,
+    deps.http ?? defaultHttp(),
+    deps.tokenUri ?? DEFAULT_TOKEN_URI,
+  );
+  return {
+    token,
+    secrets: [token, stored.refreshToken, stored.clientSecret ?? ""],
+  };
+}
+
+async function writeOutput(
+  text: string,
+  output: string | undefined,
+  io: GscRunIO,
+  warn: (s: string) => void,
+): Promise<boolean> {
+  if (!output) {
+    io.write(text);
+    return true;
+  }
+  const target = path.resolve(io.cwd, output);
+  try {
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, text);
+    return true;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    warn(
+      `mielikki: не удалось записать ${output}${typeof code === "string" ? ` (${code})` : ""}`,
+    );
+    return false;
+  }
+}
+
+async function collectSitemapUrls(
+  site: URL,
+  fetcher: Fetcher,
+): Promise<string[]> {
+  const queue = [new URL("/sitemap.xml", site).href];
+  const seen = new Set<string>();
+  const urls = new Set<string>();
+  let first = true;
+  while (queue.length > 0 && seen.size < MAX_SITEMAPS) {
+    const loc = queue.shift() as string;
+    if (seen.has(loc)) continue;
+    seen.add(loc);
+    const rec = await fetcher.get(loc);
+    const body = rec.final?.status === 200 ? rec.final.body : undefined;
+    const info = body === undefined ? undefined : parseSitemap(body, loc);
+    if (!info?.ok) {
+      if (first)
+        throw new UsageError(
+          `Не удалось получить sitemap ${site.origin}/sitemap.xml: проверьте config.site или используйте --from targets`,
+        );
+      continue;
+    }
+    first = false;
+    for (const u of info.urls) {
+      if (!URL.canParse(u) || new URL(u).hostname !== site.hostname) continue;
+      if (info.isIndex) queue.push(u);
+      else urls.add(u);
+    }
+  }
+  return [...urls].sort();
+}
+
+function fileOf<T extends object>(
+  kind: DataFile<T>["kind"],
+  rows: T[],
+  errors: ResearchError[],
+  noMeta: boolean,
+  now: Date,
+  params: Record<string, string | number | boolean>,
+): DataFile<T> {
+  return {
+    kind,
+    rows,
+    errors,
+    ...(noMeta
+      ? {}
+      : { meta: { generatedAt: now.toISOString(), version: VERSION, params } }),
+  };
+}
+
+export async function runGscInspect(
+  o: GscInspectOptions,
+  io: GscRunIO,
+  deps: GscDeps = {},
+): Promise<number> {
+  const warn = io.warn ?? (() => {});
+  let secrets: string[] = [];
+  try {
+    const config = await loadConfig(io.cwd, o.config);
+    if (!config.site)
+      throw new UsageError(
+        "Задайте site в конфиге: адрес сайта нужен для списка страниц",
+      );
+    const site = new URL(config.site);
+    const siteUrl = o.site ?? `${config.site.replace(/\/+$/, "")}/`;
+    const access = await resolveAccess(io, deps);
+    secrets = access.secrets;
+
+    let urls: string[];
+    if (o.from === "targets") {
+      urls = [
+        ...new Set(
+          config.targets.pages
+            .map((p) => new URL(p.url, site).href)
+            .filter((u) => new URL(u).hostname === site.hostname),
+        ),
+      ].sort();
+    } else {
+      const fetcher =
+        deps.fetcher ??
+        createFetcher({
+          userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
+          timeoutMs: 15000,
+          maxBytes: 5_000_000,
+          maxHops: 3,
+          concurrency: 1,
+          delayMs: 0,
+          allowRedirectHost: (h) => h === site.hostname,
+        });
+      urls = await collectSitemapUrls(site, fetcher);
+    }
+    if (urls.length === 0)
+      throw new UsageError("Нет страниц для проверки (пустой список URL)");
+    const total = urls.length;
+    urls = urls.slice(0, o.limit);
+
+    const client = createGscClient(access.token, deps.http ?? defaultHttp(), {
+      inspect: deps.inspectBase,
+      analytics: deps.analyticsBase,
+    });
+    const sleep =
+      deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    const language = config.language ?? "en";
+    const rows: InspectRow[] = [];
+    const errors: ResearchError[] = [];
+    let quota = false;
+    for (const [i, u] of urls.entries()) {
+      if (i > 0) await sleep(MIN_INTERVAL_MS);
+      try {
+        rows.push(await client.inspectUrl(siteUrl, u, language));
+      } catch (e) {
+        if (e instanceof GscQuotaError) {
+          quota = true;
+          break;
+        }
+        if (e instanceof UsageError) throw e;
+        errors.push({
+          source: "gsc-inspect",
+          target: clean(u),
+          message: redact(
+            clean(e instanceof Error ? e.message : "failed"),
+            secrets,
+          ),
+        });
+      }
+    }
+    rows.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+
+    const file = fileOf(
+      "gsc-inspect",
+      rows,
+      errors,
+      o.noMeta,
+      (deps.now ?? (() => new Date()))(),
+      {
+        site: siteUrl,
+        from: o.from,
+        limit: o.limit,
+      },
+    );
+    const text = redact(renderData(file, o.format, INSPECT_COLUMNS), secrets);
+    if (!(await writeOutput(text, o.output, io, warn))) return 2;
+
+    const byVerdict = new Map<string, number>();
+    for (const r of rows)
+      byVerdict.set(r.verdict, (byVerdict.get(r.verdict) ?? 0) + 1);
+    const counts = [...byVerdict]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([v, n]) => `${clean(v)} ${n}`)
+      .join(", ");
+    warn(
+      `gsc inspect: проверено ${rows.length} из ${total}${counts ? ` (${counts})` : ""}`,
+    );
+    const notIndexed = rows.filter((r) => r.verdict !== "PASS");
+    if (notIndexed.length > 0) {
+      warn(`Не в индексе или с замечаниями: ${notIndexed.length}`);
+      for (const r of notIndexed.slice(0, 10))
+        warn(`  ${r.verdict} ${clean(r.url)} (${clean(r.coverageState)})`);
+    }
+    if (quota) {
+      warn(
+        `mielikki: проверено ${rows.length} из ${urls.length}; квота обновляется раз в сутки`,
+      );
+      return 1;
+    }
+    if (errors.length > 0) {
+      warn(`${errors.length} запросов не удались (см. errors в данных)`);
+      return 1;
+    }
+    return 0;
+  } catch (err) {
+    if (err instanceof UsageError) {
+      warn(`mielikki: ${redact(err.message, secrets)}`);
+      return 2;
+    }
+    throw err;
+  }
+}
+
+function isoDay(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export async function runGscQueries(
+  o: GscQueriesOptions,
+  io: GscRunIO,
+  deps: GscDeps = {},
+): Promise<number> {
+  const warn = io.warn ?? (() => {});
+  let secrets: string[] = [];
+  try {
+    const config = await loadConfig(io.cwd, o.config);
+    const siteUrl =
+      o.site ?? (config.site ? `${config.site.replace(/\/+$/, "")}/` : "");
+    if (!siteUrl)
+      throw new UsageError("Укажите --site или задайте site в конфиге");
+    const access = await resolveAccess(io, deps);
+    secrets = access.secrets;
+
+    const now = (deps.now ?? (() => new Date()))();
+    const day = 86_400_000;
+    const today = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const end = new Date(today - LAG_DAYS * day);
+    const start = new Date(end.getTime() - (o.days - 1) * day);
+    const client = createGscClient(access.token, deps.http ?? defaultHttp(), {
+      inspect: deps.inspectBase,
+      analytics: deps.analyticsBase,
+    });
+    let rows: QueryRow[];
+    try {
+      rows = await client.queryAnalytics(siteUrl, {
+        startDate: isoDay(start),
+        endDate: isoDay(end),
+        rowLimit: o.rowLimit,
+      });
+    } catch (e) {
+      if (e instanceof GscQuotaError) {
+        warn("mielikki: квота Search Console исчерпана; повторите позже");
+        return 1;
+      }
+      if (e instanceof UsageError) throw e;
+      warn(
+        `mielikki: ${redact(clean(e instanceof Error ? e.message : "запрос не удался"), secrets)}`,
+      );
+      return 1;
+    }
+    rows.sort(
+      (a, b) =>
+        b.impressions - a.impressions ||
+        (a.query < b.query ? -1 : a.query > b.query ? 1 : 0) ||
+        (a.page < b.page ? -1 : a.page > b.page ? 1 : 0),
+    );
+    const params = {
+      site: siteUrl,
+      startDate: isoDay(start),
+      endDate: isoDay(end),
+      rowLimit: o.rowLimit,
+    };
+    let text: string;
+    if (o.byTarget) {
+      const cov = matchQueriesToTargets(rows, config, getLang(config.language));
+      const targetRows: TargetRow[] = cov.map((c) => ({
+        target: c.target,
+        primary: c.primary,
+        status: c.status,
+        queries: c.matched.length,
+        impressions: c.impressions,
+        clicks: c.clicks,
+        bestPosition: c.bestPosition,
+        topQueries: c.matched
+          .slice(0, 5)
+          .map((r) => r.query)
+          .join("; "),
+      }));
+      text = renderData(
+        fileOf("gsc-queries", targetRows, [], o.noMeta, now, {
+          ...params,
+          byTarget: true,
+        }),
+        o.format,
+        TARGET_COLUMNS,
+      );
+      for (const c of cov)
+        if (c.status !== "ranking")
+          warn(
+            `${c.status === "no-data" ? "Нет данных" : "Только другие страницы"}: ${clean(c.target)} («${clean(c.primary)}»)`,
+          );
+    } else {
+      text = renderData(
+        fileOf("gsc-queries", rows, [], o.noMeta, now, params),
+        o.format,
+        QUERY_COLUMNS,
+      );
+    }
+    if (!(await writeOutput(redact(text, secrets), o.output, io, warn)))
+      return 2;
+    warn(
+      `gsc queries: строк ${rows.length} (${params.startDate} — ${params.endDate})`,
+    );
+    return 0;
+  } catch (err) {
+    if (err instanceof UsageError) {
+      warn(`mielikki: ${redact(err.message, secrets)}`);
+      return 2;
+    }
+    throw err;
   }
 }
