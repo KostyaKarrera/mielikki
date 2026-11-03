@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_NESTING, maxOpenDepth } from "../../src/parse/depth.js";
-import { PageTooDeepError, parsePage } from "../../src/parse/page.js";
+import { maxOpenDepth } from "../../src/parse/depth.js";
 
 describe("maxOpenDepth", () => {
   it("counts nested elements", () => {
@@ -47,27 +46,5 @@ describe("maxOpenDepth", () => {
   });
   it("is case-insensitive and ignores stray '<'", () => {
     expect(maxOpenDepth("a < b <DIV><Br></DIV> 1<2")).toBe(1);
-  });
-});
-
-describe("parsePage depth guard", () => {
-  it("refuses 100k nested divs quickly", () => {
-    const html = `<html><body>${"<div>".repeat(100_000)}</body></html>`;
-    const t = performance.now();
-    let err: unknown;
-    try {
-      parsePage(html, "/");
-    } catch (e) {
-      err = e;
-    }
-    expect(performance.now() - t).toBeLessThan(500);
-    expect(err).toBeInstanceOf(PageTooDeepError);
-    expect((err as PageTooDeepError).message).toBe(
-      `page too deeply nested (1501 > ${MAX_NESTING})`,
-    );
-  });
-  it("parses at the cap", () => {
-    const html = `<html><body>${"<div>".repeat(MAX_NESTING - 2)}x</body></html>`;
-    expect(() => parsePage(html, "/")).not.toThrow();
   });
 });

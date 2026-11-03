@@ -486,13 +486,17 @@ describe("loadUrl: configured targets are seeded into the crawl", () => {
 
 describe("loadUrl deep nesting", () => {
   it("skips a too deeply nested page, records it, and keeps crawling", async () => {
-    const { site } = await crawl({
-      [`${O}/`]: html(
-        '<main><a href="/deep/">d</a><a href="/ok/">o</a></main>',
-      ),
-      [`${O}/deep/`]: html(`<main>${"<div>".repeat(100_000)}</main>`),
-      [`${O}/ok/`]: html("<main>ok</main>"),
-    });
+    const { site } = await crawl(
+      {
+        [`${O}/`]: html(
+          '<main><a href="/deep/">d</a><a href="/ok/">o</a></main>',
+        ),
+        [`${O}/deep/`]: html(`<main>${"<div></x>".repeat(20_000)}</main>`),
+        [`${O}/ok/`]: html("<main>ok</main>"),
+      },
+      {},
+      { parseTimeoutMs: 500 },
+    );
     expect(site.pages.map((p) => p.key)).toEqual(["/", "/ok/"]);
     expect(site.unparsed).toEqual([
       { url: `${O}/deep/`, reason: "too-deep", depth: 1501 },

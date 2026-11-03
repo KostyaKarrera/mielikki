@@ -3,7 +3,7 @@ import type { Asset, FetchRecord, Page, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import type { Fetcher } from "../net/fetch.js";
 import { isAssetPath } from "../net/policy.js";
-import { parsePageSafe, toUnparseable } from "../parse/safe.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 
 export const NOT_FOUND_PROBE = "/__mielikki_404__/";
 const MAX_SLASH_PROBES = 10;
@@ -161,12 +161,12 @@ export async function runProbes(
         timeoutMs: parseTimeoutMs,
       });
     } catch (e) {
-      const u = toUnparseable(e);
+      if (!(e instanceof PageUnparseableError)) throw e;
       site.unparsed ??= [];
       site.unparsed.push({
         url: f.url,
-        reason: u.reason,
-        depth: u.depth,
+        reason: e.reason,
+        depth: e.depth,
       });
       return; // judged without the parsed body
     }

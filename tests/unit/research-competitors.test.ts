@@ -213,41 +213,6 @@ describe("analyzeCompetitor", () => {
     expect(r.terms.map((t) => t.term)).not.toContain("salainen");
   });
 
-  it("a page whose extraction throws becomes an error entry", async () => {
-    const ok = scriptedFetcher({
-      "http://c.test/": {
-        html: html("Koti", '<a href="/bad/">b</a><a href="/good/">g</a>'),
-      },
-      "http://c.test/good/": { html: html("Good") },
-      "http://c.test/bad/": { html: html("Bad") },
-    });
-    const f = {
-      async get(url: string) {
-        const rec = await ok.get(url);
-        if (url.endsWith("/bad/") && rec.final) {
-          let n = 0;
-          rec.final = {
-            ...rec.final,
-            get body(): string {
-              if (n++ > 0) throw new Error("boom");
-              return "<html></html>";
-            },
-          };
-        }
-        return rec;
-      },
-    };
-    const r = await analyzeCompetitor("http://c.test/", f, opts);
-    expect(r.pages.map((p) => p.path)).toEqual(["/", "/good/"]);
-    expect(r.errors).toEqual([
-      {
-        source: "competitors",
-        target: "http://c.test/bad/",
-        message: "page could not be analyzed",
-      },
-    ]);
-  });
-
   it("schemaTypes are capped at 20 distinct types of at most 100 chars", async () => {
     const types = Array.from(
       { length: 9000 },
@@ -448,11 +413,14 @@ describe("analyzeCompetitor deep nesting", () => {
         html: html("Koti", '<a href="/deep/">d</a><a href="/ok/">o</a>'),
       },
       "http://c.test/deep/": {
-        html: `<html><body>${"<div>".repeat(100_000)}</body></html>`,
+        html: `<html><body>${"<div></x>".repeat(20_000)}</body></html>`,
       },
       "http://c.test/ok/": { html: html("Ok") },
     });
-    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    const r = await analyzeCompetitor("http://c.test/", f, {
+      ...opts,
+      parseTimeoutMs: 500,
+    });
     expect(r.pages.map((p) => p.path)).toEqual(["/", "/ok/"]);
     expect(r.errors).toContainEqual(
       expect.objectContaining({

@@ -643,11 +643,11 @@ describe("exclude.ignore in sitemap rules", () => {
 });
 
 describe("crawl/page-too-deep", () => {
-  it("reports pages that were refused before parsing", async () => {
-    const site = await siteFrom({
-      "index.html": doc("", a("/deep/")),
-      "deep/index.html": `<main>${"<div>".repeat(5000)}</main>`,
-    });
+  it("reports pages the parser gave up on that also look too deeply nested", async () => {
+    const site = await siteFrom(twoPages);
+    site.unparsed = [
+      { url: "deep/index.html", reason: "too-deep", depth: 1501 },
+    ];
     const f = await runRule(pageTooDeep, site);
     expect(f.map((x) => x.url)).toEqual(["deep/index.html"]);
     expect(f[0]?.message).toContain("page too deeply nested (1501 > 1500)");

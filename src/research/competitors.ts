@@ -434,10 +434,18 @@ export async function analyzeCompetitor(
         if (seen.has(finalNorm)) continue;
         seen.add(finalNorm);
       }
+      let page: Awaited<ReturnType<typeof parsePageSafe>>;
       try {
-        const page = await parsePageSafe(f.body, finalUrl.pathname, undefined, {
+        page = await parsePageSafe(f.body, finalUrl.pathname, undefined, {
           timeoutMs: o.parseTimeoutMs,
         });
+      } catch (e) {
+        // a parser bug propagates; only "cannot be parsed within bounds" is recorded
+        if (!(e instanceof PageUnparseableError)) throw e;
+        addError(url, e.message);
+        continue;
+      }
+      try {
         const heads = (lvl: 1 | 2): string[] =>
           page.headings
             .filter((h) => h.level === lvl)
@@ -471,13 +479,8 @@ export async function analyzeCompetitor(
           if (!depthOf.has(n)) depthOf.set(n, levelNo + 1);
           next.push(n);
         }
-      } catch (e) {
-        addError(
-          url,
-          e instanceof PageUnparseableError
-            ? e.message
-            : "page could not be analyzed",
-        );
+      } catch {
+        addError(url, "page could not be analyzed");
       }
     }
     if (stoppedBy !== "done") break;

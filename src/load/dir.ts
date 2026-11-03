@@ -4,9 +4,8 @@ import type { Config } from "../config/schema.js";
 import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
-import { parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
-import { toUnparseable } from "../parse/safe.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 import {
   buildSiteGraph,
   collectSitemaps,
@@ -68,11 +67,13 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
       const html = await readFile(path.join(root, rel), "utf8");
       let page: Page;
       try {
-        page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
+        page = await parsePageSafe(html, pageKey(fileUrlPath(rel)), rel, {
+          own: true,
+        });
       } catch (e) {
-        // the user's own build: parsed in-process; any failure is a per-page problem
-        const u = toUnparseable(e);
-        unparsed.push({ url: rel, reason: u.reason, depth: u.depth });
+        // only "cannot be parsed within bounds" is a finding; a bug propagates
+        if (!(e instanceof PageUnparseableError)) throw e;
+        unparsed.push({ url: rel, reason: e.reason, depth: e.depth });
         continue;
       }
       if (NOT_FOUND.test(rel)) notFound ??= page;

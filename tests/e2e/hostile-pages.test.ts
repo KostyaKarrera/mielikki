@@ -44,7 +44,7 @@ describe("hostile pages in url mode", () => {
     server = await serveDir("tests/fixtures/sites/good", {
       dynamic: (p) =>
         p === "/hostile/"
-          ? { body: page("<div></x>".repeat(20_000)) }
+          ? { body: page("<div></x>".repeat(60_000)) }
           : p === "/"
             ? {
                 body: page(

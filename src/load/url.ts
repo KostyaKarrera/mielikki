@@ -11,7 +11,7 @@ import {
   parseStartUrl,
 } from "../net/policy.js";
 import { parseRobots, type RobotsInfo } from "../parse/robots.js";
-import { parsePageSafe, toUnparseable } from "../parse/safe.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 import type { SitemapInfo } from "../parse/sitemap.js";
 import {
   buildSiteGraph,
@@ -89,8 +89,8 @@ async function pageFrom(
       { timeoutMs },
     );
   } catch (e) {
-    const u = toUnparseable(e);
-    unparsed.push({ url: f.url, reason: u.reason, depth: u.depth });
+    if (!(e instanceof PageUnparseableError)) throw e;
+    unparsed.push({ url: f.url, reason: e.reason, depth: e.depth });
     return undefined;
   }
   page.status = f.status;

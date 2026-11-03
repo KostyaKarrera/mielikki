@@ -1,10 +1,10 @@
 /**
- * Linear pre-scan of the maximum element nesting depth.
+ * Linear pre-scan of the maximum element nesting depth: a HINT only.
  *
- * parse5 (inside cheerio) is quadratic on deeply nested unclosed block tags,
- * so a hostile page must be refused BEFORE it is parsed. This scan is a cheap
- * tolerant tokenizer, not a parser: it only needs to over- or under-count a
- * little, never to be slow.
+ * parse5 (inside cheerio) is quadratic on deeply nested unclosed block tags.
+ * The scan is a cheap tolerant tokenizer, not a parser, and sloppy but real
+ * markup (`<li><a>x</li>`) makes it over-count. It never refuses a page;
+ * parsePageSafe uses it to name the finding (too-deep) when the worker gives up.
  */
 
 /** Maximum nesting depth Mielikki parses; deeper pages are refused. */

@@ -95,9 +95,9 @@ describe("broken fixtures", () => {
           r.meta.launchBlocking &&
           r.meta.inputs.includes("dir") && // url-only rules are covered in tests/unit/rules/http
           r.meta.id !== "schema/validation" &&
-          // dir mode parses in-process and cannot be made to time out or run out of
-          // memory deterministically; covered in url mode by tests/e2e/hostile-pages.test.ts
-          r.meta.id !== "crawl/page-unparseable",
+          // need a page the parser really gives up on; driven by tests/e2e/hostile-pages.test.ts
+          r.meta.id !== "crawl/page-unparseable" &&
+          r.meta.id !== "crawl/page-too-deep",
       )
       .map((r) => r.meta.id)
       .sort();
