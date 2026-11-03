@@ -148,7 +148,7 @@ npx mielikki gsc queries --by-target
 npx mielikki gsc inspect --limit 100
 ```
 
-`research` writes data files (json, csv or md) for analysis, for example in Claude Code, before you set `targets` in the config; Google Trends is an unofficial source and may stop working. `gsc` reads your own Search Console data (queries, URL Inspection) with an OAuth client you create yourself. Details, limits and setup: [docs/research.md](docs/research.md), [docs/gsc.md](docs/gsc.md). Research output and the cache (`.mielikki/`, add it to `.gitignore`) are local; only `check <dir>` (with `rules` and `init`) works fully offline.
+`research` writes data files (json, csv or md) for analysis, for example in Claude Code, before you set `targets` in the config; Google Trends is an unofficial source and may stop working. `--delay 0` is allowed for `research suggest` and `competitors`, but the defaults (400 and 500 ms) are the polite choice. `gsc` reads your own Search Console data (queries, URL Inspection) with an OAuth client you create yourself. Details, limits and setup: [docs/research.md](docs/research.md), [docs/gsc.md](docs/gsc.md). Research output and the cache (`.mielikki/`, add it to `.gitignore`) are local; only `check <dir>` (with `rules` and `init`) works fully offline.
 
 ## Network and privacy
 
@@ -175,6 +175,13 @@ The Search Console token is stored outside the project in `$XDG_CONFIG_HOME/miel
 | 0    | No findings at or above `--fail-on` (default `error`)                                                                          |
 | 1    | At least one finding at or above `--fail-on`                                                                                   |
 | 2    | Usage or configuration error (bad flag, invalid config, missing input directory or no HTML files in it, unreachable start URL) |
+
+That is the table for `check` and `perf`. The data commands use the same three codes with their own meaning:
+
+| Command                                     | 0                                                          | 1                                                                                                           | 2                                                                                                    |
+| ------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `research suggest`, `trends`, `competitors` | data written (some requests may have failed, see `errors`) | nothing was obtained (every request failed, or Google Trends refused)                                       | usage error (bad flag, no seeds/terms/URLs, cannot write the output file)                            |
+| `gsc auth`, `gsc inspect`, `gsc queries`    | done                                                       | quota stop or partial failure: the rows collected so far are still written, failed requests are in `errors` | no stored access, usage error, authentication failure, network error towards Google, HTTP 401 or 403 |
 
 ## Use with Claude Code
 

@@ -8,7 +8,8 @@
       "!docs",
       "!tests/e2e/__snapshots__",
       "!node_modules",
-      "!.superpowers"
+      "!.superpowers",
+      "!.mielikki"
     ]
   }
 }

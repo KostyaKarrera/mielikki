@@ -42,7 +42,7 @@ All commands send a `Mielikki/<version>` user agent with a link to the project, 
 Google Suggest autocomplete (`suggestqueries.google.com`) for seed phrases: `suggest <seeds...>` or `--from-config` (every `primary` and `secondary` of `targets.pages`). Rows: `seed`, `expansion`, `query`, `rank`.
 
 - `--expand none|alphabet|questions|both` (default `alphabet`): `alphabet` appends each letter a-z (plus å, ä, ö for Finnish and Swedish) to the seed; `questions` prepends question words of the language (for Finnish `miten`, `mikä`, `paljonko`, `kuinka paljon`, `mitä maksaa`, `kuka`, `missä`).
-- `--hl` and `--gl` default to the config `language` and `region` (`--gl` falls back to `hl` when no region is configured); `--delay <ms>` between requests (400).
+- `--hl` and `--gl` default to the config `language` and `region` (`--gl` falls back to `hl` when no region is configured); `--delay <ms>` between requests (400; `0` is allowed, but the default is the polite choice and Google may answer 429 sooner without a pause).
 - Local queries give sparse data: `sähkömies porvoo` returns about two suggestions. Do not expect volumes from Suggest; bet on long "service + town" queries and use the suggestions as phrasing ideas.
 - After 5 consecutive 429/503 answers the remaining requests are skipped (reported in `errors`). If every request fails, the command exits 1.
 
@@ -60,10 +60,10 @@ Google Trends interest over time (`trends.google.com`). Rows: `term`, `weekStart
 
 Structure of competitor sites: `competitors <url...>`. It is a polite crawler. **Use it only on sites you are allowed to read.**
 
-- robots.txt is always obeyed (there is no switch to turn it off). Crawl-delay is NOT honoured (known limitation); `--delay` (500 ms) sets the pause.
-- Only same-origin redirects (scheme, host and port) are followed. At most `--max-pages` pages per site (30, upper bound 1000), sitemap first.
+- robots.txt is always obeyed (there is no switch to turn it off). `--delay` (500 ms) sets the pause (`0` is allowed; the default is the polite choice). A `Crawl-delay` in robots.txt for `*` or `Mielikki` is honoured: the pause between requests to that site is the larger of `--delay` and the Crawl-delay, capped at 10 s.
+- Only same-origin redirects (scheme, host and port) are followed. At most `--max-pages` pages per site (30, upper bound 1000); the start page is taken first, then the sitemap URLs.
 - `--language fi|sv|en` selects the stemmer for `terms` (default: config language).
 - The json report per site holds `sitemapUrls`, `pagesAnalyzed`, `stoppedBy` (`done` or `max-pages`), `urlPatterns` (path patterns with counts), `pages` (url, title, H1/H2, `schemaTypes`, word count, `kind`: home/service/area/other, depth), `terms` (stems found across pages) and `errors`.
 - `csv` and `md` flatten each site to one row (`site`, `sitemapUrls`, `pagesAnalyzed`, `stoppedBy`, `notes`); `notes` holds the first error if no page was fetched, or the number of errors. Use json for the detail.
 - The top-level `errors` of a competitors file is always `[]`; errors are per site, inside each row.
-- Exit 1 if no page could be fetched from any site.
+- Exit 1 if no page could be fetched from any site. Pages nested deeper than 1500 elements are not parsed; each is recorded as an error and the crawl continues.

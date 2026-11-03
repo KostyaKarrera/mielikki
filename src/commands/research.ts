@@ -392,6 +392,8 @@ export async function runResearchCompetitors(
           maxPages: opts.maxPages,
           language,
           areaHints,
+          delayMs: opts.delay,
+          sleep: deps.sleep,
         }),
       );
     } catch (e) {

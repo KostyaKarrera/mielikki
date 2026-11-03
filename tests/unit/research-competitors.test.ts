@@ -461,3 +461,118 @@ describe("analyzeCompetitor deep nesting", () => {
     );
   });
 });
+
+describe("analyzeCompetitor manual redirects", () => {
+  const redir = (to: string | undefined, status = 302) => ({
+    html: "",
+    status,
+    headers: to === undefined ? {} : { location: to },
+  });
+  const site = (extra: Record<string, ReturnType<typeof redir>>) =>
+    scriptedFetcher({
+      "http://c.test/": { html: html("Koti", '<a href="/r0">r</a>') },
+      "http://c.test/final": { html: html("Final") },
+      ...extra,
+    });
+
+  it("follows up to 5 hops", async () => {
+    const f = site({
+      "http://c.test/r0": redir("/r1"),
+      "http://c.test/r1": redir("/r2"),
+      "http://c.test/r2": redir("/r3"),
+      "http://c.test/r3": redir("/r4"),
+      "http://c.test/r4": redir("/final"),
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toContain("/final");
+    expect(r.errors).toEqual([]);
+  });
+
+  it("stops after more than 5 hops", async () => {
+    const f = site({
+      "http://c.test/r0": redir("/r1"),
+      "http://c.test/r1": redir("/r2"),
+      "http://c.test/r2": redir("/r3"),
+      "http://c.test/r3": redir("/r4"),
+      "http://c.test/r4": redir("/r5"),
+      "http://c.test/r5": redir("/final"),
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/"]);
+    expect(r.errors.map((e) => e.message)).toContain("more than 5 redirects");
+    expect(f.requested).not.toContain("http://c.test/final");
+  });
+
+  it("detects a redirect loop", async () => {
+    const f = site({
+      "http://c.test/r0": redir("/r1"),
+      "http://c.test/r1": redir("/r0"),
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/"]);
+    expect(r.errors.map((e) => e.message)).toContain("redirect loop");
+    // the loop is cut at the first repeat
+    expect(f.requested.filter((u) => u.endsWith("/r0"))).toHaveLength(1);
+  });
+
+  it("garbage Location is an error, missing Location is not followed", async () => {
+    const f = site({
+      "http://c.test/r0": redir("http://[bad"),
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/"]);
+    expect(r.errors.map((e) => e.message)).toContain(
+      "invalid redirect location",
+    );
+
+    const g = site({ "http://c.test/r0": redir(undefined) });
+    const r2 = await analyzeCompetitor("http://c.test/", g, opts);
+    expect(r2.pages.map((p) => p.path)).toEqual(["/"]);
+    expect(g.requested.filter((u) => u.endsWith("/r0"))).toHaveLength(1);
+    expect(r2.errors.map((e) => e.message)).toContain("HTTP 302");
+  });
+});
+
+describe("analyzeCompetitor Crawl-delay", () => {
+  const robots = (delay: string) => ({
+    html: `User-agent: *\nCrawl-delay: ${delay}\n`,
+    headers: { "content-type": "text/plain" },
+  });
+  const run = async (crawlDelay: string, delayMs: number) => {
+    const f = scriptedFetcher({
+      "http://c.test/robots.txt": robots(crawlDelay),
+      "http://c.test/": { html: html("Koti", '<a href="/a/">a</a>') },
+      "http://c.test/a/": { html: html("A") },
+    });
+    const sleeps: number[] = [];
+    const r = await analyzeCompetitor("http://c.test/", f, {
+      ...opts,
+      delayMs,
+      sleep: async (ms) => void sleeps.push(ms),
+    });
+    return { sleeps, r, f };
+  };
+
+  it("pauses so the gap is max(--delay, Crawl-delay)", async () => {
+    const { sleeps, r } = await run("3", 1000);
+    expect(r.pages).toHaveLength(2);
+    expect(sleeps.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(sleeps)).toEqual(new Set([2000]));
+  });
+
+  it("caps Crawl-delay at 10 s", async () => {
+    const { sleeps } = await run("60", 0);
+    expect(new Set(sleeps)).toEqual(new Set([10_000]));
+  });
+
+  it("does nothing when --delay is already larger", async () => {
+    const { sleeps } = await run("2", 5000);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("never sleeps before robots.txt itself", async () => {
+    const { sleeps, f } = await run("3", 0);
+    expect(f.requested[0]).toBe("http://c.test/robots.txt");
+    expect(sleeps.length).toBe(f.requested.length - 1);
+  });
+});

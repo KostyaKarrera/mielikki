@@ -124,7 +124,7 @@ export async function runSuggest(
       if (suggestions === undefined) {
         if (networkCalls > 0 && o.delayMs > 0) await sleep(o.delayMs);
         networkCalls++;
-        const url = `${base}/complete/search?client=firefox&hl=${encodeURIComponent(o.hl)}&gl=${encodeURIComponent(o.gl)}&q=${encodeURIComponent(job.q)}`;
+        const url = `${base}/complete/search?client=firefox&ie=utf-8&oe=utf-8&hl=${encodeURIComponent(o.hl)}&gl=${encodeURIComponent(o.gl)}&q=${encodeURIComponent(job.q)}`;
         const res = await http.getText(url);
         if (res.status !== 200) {
           if (res.status === 429 || res.status === 503) throttled++;

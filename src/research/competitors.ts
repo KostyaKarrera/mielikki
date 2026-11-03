@@ -38,7 +38,14 @@ export interface CompetitorOptions {
   maxPages: number;
   language?: "fi" | "sv" | "en";
   areaHints: string[];
+  /** The caller's --delay (ms), already applied by the fetcher. */
+  delayMs?: number;
+  /** Test override of the Crawl-delay pause. */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+/** Upper bound for a robots.txt Crawl-delay we are willing to honour. */
+export const MAX_CRAWL_DELAY_MS = 10_000;
 
 const SOURCE = "competitors";
 const MAX_SITEMAP_SEEDS = 200;
@@ -134,7 +141,7 @@ const mediaType = (ct: string | undefined): string =>
 function failure(rec: FetchRecord): string | undefined {
   if (rec.stop !== undefined) return rec.detail ?? rec.stop;
   if (rec.final === undefined) return "network";
-  if (rec.final.status >= 400) return `HTTP ${rec.final.status}`;
+  if (rec.final.status >= 300) return `HTTP ${rec.final.status}`;
   return undefined;
 }
 
@@ -236,6 +243,10 @@ export async function analyzeCompetitor(
   // Every request goes through here: never to another origin. Redirects are
   // followed here, not by the Fetcher, so each hop is checked (full origin and
   // robots.txt) before it is requested.
+  // Extra pause per request so that the gap is max(--delay, Crawl-delay), capped.
+  let extraDelayMs = 0;
+  const sleep =
+    o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const get = async (url: string): Promise<FetchRecord> => {
     if (new URL(url).origin !== origin)
       throw new Error(`refusing to request off-host URL ${url}`);
@@ -244,6 +255,7 @@ export async function analyzeCompetitor(
     let current = url;
     for (;;) {
       visited.add(current);
+      if (extraDelayMs > 0) await sleep(extraDelayMs);
       const rec = await fetcher.get(current, { follow: false });
       const f = rec.final;
       const location = f?.headers.location;
@@ -289,6 +301,11 @@ export async function analyzeCompetitor(
   const robotsRec = await get(robotsUrl);
   if (robotsRec.final?.status === 200) {
     robots = parseRobots(robotsRec.final.body ?? "", origin);
+    const cd = robots.crawlDelay("Mielikki");
+    if (cd !== undefined) {
+      const wanted = Math.min(Math.round(cd * 1000), MAX_CRAWL_DELAY_MS);
+      extraDelayMs = Math.max(0, wanted - (o.delayMs ?? 0));
+    }
   } else if (
     robotsRec.final === undefined ||
     robotsRec.final.status >= 500 ||

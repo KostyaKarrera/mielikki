@@ -68,7 +68,7 @@ const HELP = [
   "     Credentials, Create OAuth client ID, Desktop app, download the JSON).",
   "  2. mielikki gsc auth --adc - Application Default Credentials",
   "     (gcloud auth application-default login with the webmasters.readonly scope).",
-  "Details: docs/gsc.md.",
+  "Details: https://github.com/KostyaKarrera/mielikki/blob/main/docs/gsc.md",
 ].join("\n");
 
 const defaultHttp = (): HttpJson =>

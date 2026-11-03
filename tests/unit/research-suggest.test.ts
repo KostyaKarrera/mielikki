@@ -78,7 +78,7 @@ describe("runSuggest", () => {
       f.rows.find((r) => r.query === "sähköasentaja avaimet käteen")?.expansion,
     ).toBe("a");
     expect(s.suggestLog).toContain(
-      "/complete/search?client=firefox&hl=fi&gl=fi&q=s%C3%A4hk%C3%B6asentaja%20a",
+      "/complete/search?client=firefox&ie=utf-8&oe=utf-8&hl=fi&gl=fi&q=s%C3%A4hk%C3%B6asentaja%20a",
     );
   });
 
