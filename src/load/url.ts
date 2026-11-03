@@ -10,8 +10,8 @@ import {
   normalizeCrawlUrl,
   parseStartUrl,
 } from "../net/policy.js";
-import { parsePage } from "../parse/page.js";
 import { parseRobots, type RobotsInfo } from "../parse/robots.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 import type { SitemapInfo } from "../parse/sitemap.js";
 import {
   buildSiteGraph,
@@ -25,6 +25,8 @@ export interface CrawlOptions {
   maxPages: number;
   maxAssets: number;
   respectRobots: boolean;
+  /** Per-page parse time limit in ms (default 5000). */
+  parseTimeoutMs?: number;
 }
 
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
@@ -65,7 +67,11 @@ function xRobotsTokens(header: string | undefined): string[] {
   return out;
 }
 
-function pageFrom(rec: FetchRecord): Page | undefined {
+async function pageFrom(
+  rec: FetchRecord,
+  unparsed: NonNullable<Site["unparsed"]>,
+  timeoutMs: number | undefined,
+): Promise<Page | undefined> {
   const f = rec.final;
   if (
     f === undefined ||
@@ -74,7 +80,19 @@ function pageFrom(rec: FetchRecord): Page | undefined {
     !HTML_TYPES.has(mediaType(f.contentType ?? f.headers["content-type"]))
   )
     return undefined;
-  const page = parsePage(f.body, pageKey(new URL(f.url).pathname));
+  let page: Page;
+  try {
+    page = await parsePageSafe(
+      f.body,
+      pageKey(new URL(f.url).pathname),
+      undefined,
+      { timeoutMs },
+    );
+  } catch (e) {
+    if (!(e instanceof PageUnparseableError)) throw e;
+    unparsed.push({ url: f.url, reason: e.reason, depth: e.depth });
+    return undefined;
+  }
   page.status = f.status;
   page.headers = f.headers;
   page.url = f.url;
@@ -168,6 +186,7 @@ export async function loadUrl(
   const skipped = new Set<string>();
   let limitReached = false;
   const pages = new Map<string, Page>();
+  const unparsed: NonNullable<Site["unparsed"]> = [];
 
   // A start URL that ends up on another origin (http -> https, apex -> www,
   // another port) would make every link look off-host: refuse, naming the target.
@@ -251,23 +270,23 @@ export async function loadUrl(
       i += batch.length;
       const recs = await Promise.all(batch.map(request));
       // Results are handled in sorted order, so Site does not depend on timing.
-      batch.forEach((url, n) => {
+      for (const [n, url] of batch.entries()) {
         const rec = recs[n] as FetchRecord;
         if (url === startUrlNorm) checkStartOrigin(rec);
         responses.set(url, rec);
-        if (rec.final === undefined) return;
+        if (rec.final === undefined) continue;
         // A page that redirected off the crawl origin (e.g. to https://) is a
         // redirect (links/redirected), not a crawled page.
-        if (new URL(rec.final.url).origin !== crawlOrigin) return;
+        if (new URL(rec.final.url).origin !== crawlOrigin) continue;
         seen.add(normalizeCrawlUrl(rec.final.url).url);
-        const page = pageFrom(rec);
-        if (page === undefined || pages.has(page.key)) return;
+        const page = await pageFrom(rec, unparsed, opts.parseTimeoutMs);
+        if (page === undefined || pages.has(page.key)) continue;
         pages.set(page.key, page);
         for (const l of page.links) {
           const u = toCrawl(l.href, rec.final.url);
           if (u !== undefined) next.push(u);
         }
-      });
+      }
     }
     level = next;
   }
@@ -294,6 +313,7 @@ export async function loadUrl(
     inlinks,
     inlinksAll,
     depth,
+    ...(unparsed.length > 0 ? { unparsed } : {}),
     origin: crawlOrigin,
     responses,
     crawl: {
@@ -302,6 +322,6 @@ export async function loadUrl(
     },
   };
   await loadAssets(site, guarded, opts.maxAssets);
-  await runProbes(site, guarded);
+  await runProbes(site, guarded, opts.parseTimeoutMs);
   return site;
 }

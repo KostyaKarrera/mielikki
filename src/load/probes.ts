@@ -1,9 +1,9 @@
 import { isLocalHost } from "../model/host.js";
-import type { Asset, FetchRecord, Site } from "../model/types.js";
+import type { Asset, FetchRecord, Page, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import type { Fetcher } from "../net/fetch.js";
 import { isAssetPath } from "../net/policy.js";
-import { parsePage } from "../parse/page.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 
 export const NOT_FOUND_PROBE = "/__mielikki_404__/";
 const MAX_SLASH_PROBES = 10;
@@ -105,7 +105,11 @@ export async function loadAssets(
   });
 }
 
-export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
+export async function runProbes(
+  site: Site,
+  fetcher: Fetcher,
+  parseTimeoutMs?: number,
+): Promise<void> {
   const origin = site.origin;
   const responses = site.responses;
   if (origin === undefined || responses === undefined) return;
@@ -151,7 +155,21 @@ export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
     f.body?.trim() &&
     HTML_TYPES.has(ct.split(";")[0]?.trim().toLowerCase() ?? "")
   ) {
-    const page = parsePage(f.body, pageKey(NOT_FOUND_PROBE));
+    let page: Page;
+    try {
+      page = await parsePageSafe(f.body, pageKey(NOT_FOUND_PROBE), undefined, {
+        timeoutMs: parseTimeoutMs,
+      });
+    } catch (e) {
+      if (!(e instanceof PageUnparseableError)) throw e;
+      site.unparsed ??= [];
+      site.unparsed.push({
+        url: f.url,
+        reason: e.reason,
+        depth: e.depth,
+      });
+      return; // judged without the parsed body
+    }
     page.status = f.status;
     page.headers = f.headers;
     page.url = f.url;

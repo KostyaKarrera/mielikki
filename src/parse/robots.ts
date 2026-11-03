@@ -3,6 +3,7 @@ import robotsModule from "robots-parser";
 interface RobotsParserResult {
   isAllowed(url: string, ua?: string): boolean | undefined;
   getSitemaps(): string[];
+  getCrawlDelay(ua?: string): number | undefined;
 }
 
 // robots-parser is CommonJS (`module.exports = fn`) but ships ESM-style typings.
@@ -16,6 +17,8 @@ export interface RobotsInfo {
   sitemaps: string[];
   isAllowed(path: string, agent: string): boolean;
   disallowsAll(agent: string): boolean;
+  /** Crawl-delay in seconds for this agent, if declared and valid. */
+  crawlDelay(agent: string): number | undefined;
 }
 
 export function parseRobots(raw: string, site?: string): RobotsInfo {
@@ -29,6 +32,12 @@ export function parseRobots(raw: string, site?: string): RobotsInfo {
     raw,
     sitemaps: robots.getSitemaps(),
     isAllowed,
+    crawlDelay: (agent) => {
+      const d = robots.getCrawlDelay(agent);
+      return typeof d === "number" && Number.isFinite(d) && d > 0
+        ? d
+        : undefined;
+    },
     disallowsAll: (agent) =>
       !isAllowed("/", agent) && !isAllowed("/__mielikki_probe__/", agent),
   };

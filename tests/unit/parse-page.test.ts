@@ -176,15 +176,22 @@ describe("mainText block separation", () => {
     ).toBe(3);
   });
 
-  it("is linear in the number of sibling blocks (20k <p>)", () => {
-    const html = `<html><body><main>${"<p>sana</p>".repeat(20_000)}</main></body></html>`;
-    const t = performance.now();
-    const p = pageFrom(html);
-    expect(performance.now() - t).toBeLessThan(1000);
-    expect(p.wordCount).toBe(20_000);
-  });
-  it("handles deep nesting without recursion limits", () => {
-    const html = `<html><body><main>${"<div>".repeat(20_000)}x${"</div>".repeat(20_000)}</main></body></html>`;
+  it("is linear in the number of sibling blocks (<p>)", () => {
+    const run = (n: number): number => {
+      const html = `<html><body><main>${"<p>sana</p>".repeat(n)}</main></body></html>`;
+      const t = performance.now();
+      const p = pageFrom(html);
+      expect(p.wordCount).toBe(n);
+      return performance.now() - t;
+    };
+    run(2_000); // warm-up
+    const small = run(5_000);
+    const big = run(20_000);
+    // 4x the input must not cost anywhere near 16x (quadratic); generous for loaded machines
+    expect(big).toBeLessThan(Math.max(small, 20) * 12);
+  }, 30_000);
+  it("handles deep nesting below the cap without recursion limits", () => {
+    const html = `<html><body><main>${"<div>".repeat(1_400)}x${"</div>".repeat(1_400)}</main></body></html>`;
     expect(pageFrom(html).mainText).toBe("x");
   }, 30_000);
   it("separates br and ignores script/noscript text", () => {

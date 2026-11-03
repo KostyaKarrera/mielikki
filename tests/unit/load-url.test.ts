@@ -483,3 +483,45 @@ describe("loadUrl: configured targets are seeded into the crawl", () => {
     expect(fetcher.requested).not.toContain(`${O}/aaa/`);
   });
 });
+
+describe("loadUrl deep nesting", () => {
+  it("skips a too deeply nested page, records it, and keeps crawling", async () => {
+    const { site } = await crawl(
+      {
+        [`${O}/`]: html(
+          '<main><a href="/deep/">d</a><a href="/ok/">o</a></main>',
+        ),
+        [`${O}/deep/`]: html(`<main>${"<div></x>".repeat(20_000)}</main>`),
+        [`${O}/ok/`]: html("<main>ok</main>"),
+      },
+      {},
+      { parseTimeoutMs: 500 },
+    );
+    expect(site.pages.map((p) => p.key)).toEqual(["/", "/ok/"]);
+    expect(site.unparsed).toEqual([
+      { url: `${O}/deep/`, reason: "too-deep", depth: 1501 },
+    ]);
+  });
+});
+
+describe("loadUrl unparseable pages", () => {
+  const b = Array.from({ length: 1400 }, (_, i) => `<b a${i}>`).join("");
+  const blowup = `<div>${b}${"</div><div>x".repeat(3000)}`;
+  it("a page the parse subprocess cannot parse is recorded and the crawl continues", async () => {
+    const { site } = await crawl(
+      {
+        [`${O}/`]: html(
+          '<main><a href="/bad/">b</a><a href="/ok/">o</a></main>',
+        ),
+        [`${O}/bad/`]: html(blowup),
+        [`${O}/ok/`]: html("<main>ok</main>"),
+      },
+      {},
+      { parseTimeoutMs: 400 },
+    );
+    expect(site.pages.map((p) => p.key)).toEqual(["/", "/ok/"]);
+    expect(site.unparsed).toHaveLength(1);
+    expect(site.unparsed?.[0]?.url).toBe(`${O}/bad/`);
+    expect(["timeout", "memory"]).toContain(site.unparsed?.[0]?.reason);
+  });
+});

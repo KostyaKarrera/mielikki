@@ -1,0 +1,2 @@
+)]}'
+{"widgets":[{"id":"TIMESERIES","token":"TOK123","request":{"time":"today 5-y","resolution":"WEEK","locale":"fi","comparisonItem":[{"geo":{"country":"FI"},"complexKeywordsRestriction":{"keyword":[{"type":"BROAD","value":"sähköasentaja"}]}}]}},{"id":"GEO_MAP","token":"X","request":{}}]}

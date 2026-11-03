@@ -7,7 +7,7 @@ business:
   type: service-area
   schemaType: Electrician
   name: Example Sähkö Oy
-  phone: "+358 41 555 0142"
+  phone: "+358 41 000 0000"
   email: info@sahko.example
   areaServed: [Loviisa, Porvoo, Helsinki, Uusimaa]
   hasReviews: false

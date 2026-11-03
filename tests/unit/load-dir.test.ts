@@ -19,6 +19,18 @@ describe("loadDir", () => {
     expect(site.pages.map((p) => p.key)).toEqual(["/", "/a/", "/b/", "/c/"]);
   });
 
+  it("a page the parser gives up on is recorded, the rest loads (own build limits)", async () => {
+    const b = Array.from({ length: 1400 }, (_, i) => `<b a${i}>`).join("");
+    const site = await siteFrom({
+      "index.html": '<main><a href="/bad/">d</a></main>',
+      "bad/index.html": `<div>${b}${"</div><div>x".repeat(3000)}`,
+    });
+    expect(site.pages.map((p) => p.key)).toEqual(["/"]);
+    expect(site.unparsed).toHaveLength(1);
+    expect(site.unparsed?.[0]?.url).toBe("bad/index.html");
+    expect(["memory", "timeout"]).toContain(site.unparsed?.[0]?.reason);
+  }, 60_000);
+
   it("404 separated", async () => {
     const site = await siteFrom({
       "index.html": "<p>x</p>",

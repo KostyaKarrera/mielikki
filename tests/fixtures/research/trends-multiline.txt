@@ -1,0 +1,2 @@
+)]}'
+{"default":{"timelineData":[{"time":"1704067200","formattedTime":"Dec 31, 2023 - Jan 6, 2024","formattedAxisTime":"Dec 31, 2023","value":[80,10],"hasData":[true,true],"formattedValue":["80","10"]},{"time":"1704672000","formattedTime":"x","formattedAxisTime":"Jan 7, 2024","value":[100,20],"hasData":[true,true],"formattedValue":["100","20"]},{"time":"1719705600","formattedTime":"x","formattedAxisTime":"Jun 30, 2024","value":[20,30],"hasData":[true,true],"formattedValue":["20","30"]}]}}

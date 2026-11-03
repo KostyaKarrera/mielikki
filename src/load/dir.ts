@@ -4,8 +4,8 @@ import type { Config } from "../config/schema.js";
 import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
-import { parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 import {
   buildSiteGraph,
   collectSitemaps,
@@ -61,10 +61,21 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
   const pages: Page[] = [];
   let notFound: Page | undefined;
   const assets = new Map<string, Asset>();
+  const unparsed: NonNullable<Site["unparsed"]> = [];
   for (const rel of files) {
     if (HTML.test(rel)) {
       const html = await readFile(path.join(root, rel), "utf8");
-      const page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
+      let page: Page;
+      try {
+        page = await parsePageSafe(html, pageKey(fileUrlPath(rel)), rel, {
+          own: true,
+        });
+      } catch (e) {
+        // only "cannot be parsed within bounds" is a finding; a bug propagates
+        if (!(e instanceof PageUnparseableError)) throw e;
+        unparsed.push({ url: rel, reason: e.reason, depth: e.depth });
+        continue;
+      }
       if (NOT_FOUND.test(rel)) notFound ??= page;
       else pages.push(page);
     } else {
@@ -105,6 +116,7 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
     // exclude.ignore: not checked, but kept in byKey/inlinks/depth so links resolve.
     pages: unique.filter((p) => !isIgnored(config, p.key)),
     notFound,
+    ...(unparsed.length > 0 ? { unparsed } : {}),
     robots,
     sitemaps,
     assets,

@@ -6,8 +6,14 @@ import {
   Option,
 } from "commander";
 import { runCheck } from "./commands/check.js";
+import { runGscAuth, runGscInspect, runGscQueries } from "./commands/gsc.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
+import {
+  runResearchCompetitors,
+  runResearchSuggest,
+  runResearchTrends,
+} from "./commands/research.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -45,7 +51,7 @@ export function buildProgram(): Command {
   const program = new Command();
   program
     .name("mielikki")
-    .description("Local, offline SEO audit CLI")
+    .description("Deterministic SEO audit and keyword-research CLI")
     .version(VERSION)
     .exitOverride();
 
@@ -185,6 +191,304 @@ export function buildProgram(): Command {
             process.stderr.write(`${s}\n`);
           },
         },
+      );
+    });
+
+  const research = program
+    .command("research")
+    .description("Collect raw material for choosing search queries")
+    .exitOverride();
+  research
+    .command("suggest")
+    .description(
+      "Google Suggest autocomplete for seed phrases (sends requests to suggestqueries.google.com)",
+    )
+    .argument("[seeds...]", "seed phrases")
+    .option("--from-config", "use targets.pages[].primary and secondary")
+    .option("--hl <lang>", "interface language (default: config language)")
+    .option("--gl <region>", "country (default: config region)")
+    .addOption(
+      new Option("--expand <mode>", "expand each seed")
+        .choices(["none", "alphabet", "questions", "both"])
+        .default("alphabet"),
+    )
+    .option(
+      "--delay <ms>",
+      "pause between requests (400)",
+      int(false, MAX_MS),
+      400,
+    )
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--refresh", "ignore cached answers")
+    .option("--no-cache", "do not read or write the cache")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (seeds: string[], o) => {
+      process.exitCode = await runResearchSuggest(
+        seeds,
+        {
+          config: o.config,
+          fromConfig: o.fromConfig === true,
+          hl: o.hl,
+          gl: o.gl,
+          expand: o.expand,
+          delay: o.delay,
+          format: o.format,
+          output: o.output,
+          // commander's --no-meta / --no-cache set `meta` / `cache` (default true)
+          noMeta: o.meta === false,
+          refresh: o.refresh === true,
+          noCache: o.cache === false,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  research
+    .command("trends")
+    .description(
+      "Google Trends interest over time (experimental: unofficial endpoint, may be rate-limited or stop working; sends requests to trends.google.com)",
+    )
+    .argument(
+      "<terms...>",
+      "search terms. Google allows 5 per request: more are split into groups sharing the first term as anchor, and later groups are rescaled to the anchor (approximate, values may exceed 100)",
+    )
+    .option("--geo <code>", "country (default: config region)")
+    .option("--hl <lang>", "interface language (default: config language)")
+    .option(
+      "--timeframe <t>",
+      'time range; weekStart holds the point\'s start (full ISO timestamp for sub-daily ranges such as "now 7-d")',
+      "today 5-y",
+    )
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--refresh", "ignore cached answers")
+    .option("--no-cache", "do not read or write the cache")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (terms: string[], o) => {
+      process.exitCode = await runResearchTrends(
+        terms,
+        {
+          config: o.config,
+          geo: o.geo,
+          hl: o.hl,
+          timeframe: o.timeframe,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+          refresh: o.refresh === true,
+          noCache: o.cache === false,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  research
+    .command("competitors")
+    .description(
+      "Structure of competitor sites: pages, headings, schema, URL patterns (polite crawl of the given sites, robots.txt always obeyed)",
+    )
+    .argument("<url...>", "competitor site start URLs")
+    .option("--max-pages <n>", "pages per site (30)", int(true, 1000), 30)
+    .option(
+      "--delay <ms>",
+      "pause between requests (500)",
+      int(false, MAX_MS),
+      500,
+    )
+    .addOption(
+      new Option("--language <code>", "stemming language for terms").choices([
+        "fi",
+        "sv",
+        "en",
+      ]),
+    )
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (urls: string[], o) => {
+      process.exitCode = await runResearchCompetitors(
+        urls,
+        {
+          config: o.config,
+          maxPages: o.maxPages,
+          delay: o.delay,
+          language: o.language,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+        },
+        {
+          cwd: process.cwd(),
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  const gsc = program
+    .command("gsc")
+    .description("Google Search Console (read-only)")
+    .exitOverride();
+  gsc
+    .command("auth")
+    .description(
+      "Authorize read-only access (sends requests to accounts.google.com and oauth2.googleapis.com)",
+    )
+    .option("--client <path>", "OAuth client JSON of type Desktop app")
+    .option("--adc", "use Application Default Credentials (authorized_user)")
+    .option("--logout", "delete the stored token")
+    .option("--no-open", "only print the link, do not open a browser")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscAuth(
+        {
+          client: o.client,
+          adc: o.adc === true,
+          logout: o.logout === true,
+          noOpen: o.open === false,
+        },
+        {
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  const gscIO = () => ({
+    cwd: process.cwd(),
+    write: (s: string) => {
+      process.stdout.write(s);
+    },
+    warn: (s: string) => {
+      process.stderr.write(`${s}\n`);
+    },
+  });
+  const dataFormat = (): Option =>
+    new Option("--format <fmt>", "output format")
+      .choices(["json", "csv", "md"])
+      .default("json");
+  gsc
+    .command("inspect")
+    .description(
+      "URL Inspection for the pages of the sitemap (sends requests to searchconsole.googleapis.com and the config.site host)",
+    )
+    .option(
+      "--site <siteUrl>",
+      "Search Console property (default: config.site/)",
+    )
+    .addOption(
+      new Option("--from <src>", "where the URL list comes from")
+        .choices(["sitemap", "targets"])
+        .default("sitemap"),
+    )
+    .option(
+      "--limit <n>",
+      "pages to inspect (at most 2000 a day)",
+      int(true, 2000),
+      200,
+    )
+    .addOption(dataFormat())
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscInspect(
+        {
+          config: o.config,
+          site: o.site,
+          from: o.from,
+          limit: o.limit,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+        },
+        gscIO(),
+      );
+    });
+  gsc
+    .command("queries")
+    .description(
+      "Search queries and pages from Search Analytics (sends requests to www.googleapis.com)",
+    )
+    .option(
+      "--site <siteUrl>",
+      "Search Console property (default: config.site/)",
+    )
+    .option(
+      "--days <n>",
+      "period in days, ending 2 days ago",
+      int(true, 480),
+      28,
+    )
+    .option(
+      "--row-limit <n>",
+      "rows to fetch (paginated by 25000, at most 100000)",
+      int(true, 100000),
+      1000,
+    )
+    .option("--by-target", "coverage of targets.pages by queries")
+    .addOption(dataFormat())
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (o) => {
+      process.exitCode = await runGscQueries(
+        {
+          config: o.config,
+          site: o.site,
+          days: o.days,
+          rowLimit: o.rowLimit,
+          byTarget: o.byTarget === true,
+          format: o.format,
+          output: o.output,
+          noMeta: o.meta === false,
+        },
+        gscIO(),
       );
     });
 

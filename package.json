@@ -1,7 +1,23 @@
 {
   "name": "mielikki",
-  "version": "0.2.0",
-  "description": "Local, offline SEO audit CLI",
+  "version": "1.0.0",
+  "description": "Deterministic SEO audit and keyword-research CLI for websites (static builds and live sites)",
+  "keywords": [
+    "seo",
+    "seo-audit",
+    "cli",
+    "lint",
+    "static-site",
+    "lighthouse",
+    "search-console",
+    "keyword-research",
+    "local-seo",
+    "finnish"
+  ],
+  "homepage": "https://github.com/KostyaKarrera/mielikki#readme",
+  "bugs": {
+    "url": "https://github.com/KostyaKarrera/mielikki/issues"
+  },
   "license": "MIT",
   "author": "KostyaKarrera",
   "repository": {
@@ -22,7 +38,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
     "prepare": "npm run build",
     "test": "vitest run",
     "lint": "biome check .",
@@ -59,5 +75,9 @@
     "lighthouse": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

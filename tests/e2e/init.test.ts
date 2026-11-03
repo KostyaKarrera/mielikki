@@ -102,7 +102,9 @@ describe("init", () => {
     });
     const r = run(["init"], cwd);
     expect(r.status).toBe(0);
-    expect(r.stdout).toBe("wrote mielikki.config.yaml\n");
+    expect(r.stdout).toBe(
+      "wrote mielikki.config.yaml\ntip: add .mielikki/ to .gitignore (research cache lives there)\n",
+    );
     const raw = parse(read(cwd));
     expect(() => parseConfig(raw)).not.toThrow();
     expect(raw.language).toBe("fi");

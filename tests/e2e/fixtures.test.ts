@@ -94,7 +94,10 @@ describe("broken fixtures", () => {
         (r) =>
           r.meta.launchBlocking &&
           r.meta.inputs.includes("dir") && // url-only rules are covered in tests/unit/rules/http
-          r.meta.id !== "schema/validation",
+          r.meta.id !== "schema/validation" &&
+          // need a page the parser really gives up on; driven by tests/e2e/hostile-pages.test.ts
+          r.meta.id !== "crawl/page-unparseable" &&
+          r.meta.id !== "crawl/page-too-deep",
       )
       .map((r) => r.meta.id)
       .sort();
