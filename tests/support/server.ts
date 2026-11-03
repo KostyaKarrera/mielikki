@@ -11,6 +11,11 @@ export interface Behaviors {
   status?: Record<string, number>;
   delayMs?: Record<string, number>;
   gzip?: boolean;
+  /** Handler for GET /complete/search (Google Suggest stand-in). */
+  suggest?: (
+    q: string,
+    params: URLSearchParams,
+  ) => { status?: number; type?: string; body: string; delayMs?: number };
   extra?: Record<
     string,
     { type: string; body: string | Buffer; stream?: "endless" | "stall" }
@@ -23,6 +28,8 @@ export interface TestServer {
   requests: string[];
   /** Paths whose response was cut off before completion (client hung up). */
   aborted: string[];
+  /** Raw request URLs (path + query) of every /complete/search call, in arrival order. */
+  suggestLog: string[];
 }
 
 const TYPES: Record<string, string> = {
@@ -50,6 +57,7 @@ export async function serveDir(
   const root = path.resolve(dir);
   const requests: string[] = [];
   const aborted: string[] = [];
+  const suggestLog: string[] = [];
   const timers = new Set<NodeJS.Timeout>();
 
   const handle = async (
@@ -62,6 +70,28 @@ export async function serveDir(
     res.on("close", () => {
       if (!res.writableFinished) aborted.push(pathname);
     });
+
+    if (pathname === "/complete/search" && b.suggest) {
+      suggestLog.push(req.url ?? "");
+      const params = new URL(req.url ?? "/", "http://x").searchParams;
+      const r = b.suggest(params.get("q") ?? "", params);
+      if (r.delayMs) {
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(() => {
+            timers.delete(t);
+            resolve();
+          }, r.delayMs);
+          timers.add(t);
+        });
+      }
+      if (res.destroyed) return;
+      res.writeHead(r.status ?? 200, {
+        "content-type": r.type ?? "application/json; charset=utf-8",
+        "content-length": String(Buffer.byteLength(r.body)),
+      });
+      res.end(r.body);
+      return;
+    }
 
     const delay = b.delayMs?.[pathname];
     if (delay) {
@@ -156,6 +186,7 @@ export async function serveDir(
     url: `http://127.0.0.1:${port}`,
     requests,
     aborted,
+    suggestLog,
     close: () =>
       new Promise<void>((resolve) => {
         for (const t of timers) clearTimeout(t);

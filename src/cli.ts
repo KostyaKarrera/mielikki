@@ -8,6 +8,7 @@ import {
 import { runCheck } from "./commands/check.js";
 import { runInit } from "./commands/init.js";
 import { runPerf } from "./commands/perf.js";
+import { runResearchSuggest } from "./commands/research.js";
 import { explainRule, listRules, type RulesFormat } from "./commands/rules.js";
 import { ConfigError } from "./config/schema.js";
 import { UsageError } from "./errors.js";
@@ -178,6 +179,70 @@ export function buildProgram(): Command {
         {
           cwd: process.cwd(),
           isTTY: process.stdout.isTTY === true,
+          write: (s) => {
+            process.stdout.write(s);
+          },
+          warn: (s) => {
+            process.stderr.write(`${s}\n`);
+          },
+        },
+      );
+    });
+
+  const research = program
+    .command("research")
+    .description("Collect raw material for choosing search queries")
+    .exitOverride();
+  research
+    .command("suggest")
+    .description(
+      "Google Suggest autocomplete for seed phrases (sends requests to suggestqueries.google.com)",
+    )
+    .argument("[seeds...]", "seed phrases")
+    .option("--from-config", "use targets.pages[].primary and secondary")
+    .option("--hl <lang>", "interface language (default: config language)")
+    .option("--gl <region>", "country (default: config region)")
+    .addOption(
+      new Option("--expand <mode>", "expand each seed")
+        .choices(["none", "alphabet", "questions", "both"])
+        .default("alphabet"),
+    )
+    .option(
+      "--delay <ms>",
+      "pause between requests (400)",
+      int(false, MAX_MS),
+      400,
+    )
+    .addOption(
+      new Option("--format <fmt>", "output format")
+        .choices(["json", "csv", "md"])
+        .default("json"),
+    )
+    .option("--output <file>", "write the data to a file")
+    .option("--no-meta", "omit generatedAt/version (reproducible output)")
+    .option("--refresh", "ignore cached answers")
+    .option("--no-cache", "do not read or write the cache")
+    .option("--config <path>", "path to config file")
+    .exitOverride()
+    .action(async (seeds: string[], o) => {
+      process.exitCode = await runResearchSuggest(
+        seeds,
+        {
+          config: o.config,
+          fromConfig: o.fromConfig === true,
+          hl: o.hl,
+          gl: o.gl,
+          expand: o.expand,
+          delay: o.delay,
+          format: o.format,
+          output: o.output,
+          // commander's --no-meta / --no-cache set `meta` / `cache` (default true)
+          noMeta: o.meta === false,
+          refresh: o.refresh === true,
+          noCache: o.cache === false,
+        },
+        {
+          cwd: process.cwd(),
           write: (s) => {
             process.stdout.write(s);
           },
