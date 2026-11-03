@@ -9,7 +9,8 @@
       "!tests/e2e/__snapshots__",
       "!node_modules",
       "!.superpowers",
-      "!.mielikki"
+      "!.mielikki",
+      "!tests/fixtures/sites/broken-deep"
     ]
   }
 }

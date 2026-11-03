@@ -1,0 +1,4 @@
+site: https://deep.example
+language: fi
+input:
+  dir: dist

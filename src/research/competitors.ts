@@ -6,8 +6,8 @@ import {
   normalizeCrawlUrl,
   parseStartUrl,
 } from "../net/policy.js";
-import { PageTooDeepError, parsePage } from "../parse/page.js";
 import { parseRobots, type RobotsInfo } from "../parse/robots.js";
+import { PageUnparseableError, parsePageSafe } from "../parse/safe.js";
 import { parseSitemap } from "../parse/sitemap.js";
 import type { ResearchError } from "./types.js";
 
@@ -42,6 +42,8 @@ export interface CompetitorOptions {
   delayMs?: number;
   /** Test override of the Crawl-delay pause. */
   sleep?: (ms: number) => Promise<void>;
+  /** Per-page parse time limit in ms (default 5000). */
+  parseTimeoutMs?: number;
 }
 
 /** Upper bound for a robots.txt Crawl-delay we are willing to honour. */
@@ -433,7 +435,9 @@ export async function analyzeCompetitor(
         seen.add(finalNorm);
       }
       try {
-        const page = parsePage(f.body, finalUrl.pathname);
+        const page = await parsePageSafe(f.body, finalUrl.pathname, undefined, {
+          timeoutMs: o.parseTimeoutMs,
+        });
         const heads = (lvl: 1 | 2): string[] =>
           page.headings
             .filter((h) => h.level === lvl)
@@ -470,7 +474,7 @@ export async function analyzeCompetitor(
       } catch (e) {
         addError(
           url,
-          e instanceof PageTooDeepError
+          e instanceof PageUnparseableError
             ? e.message
             : "page could not be analyzed",
         );

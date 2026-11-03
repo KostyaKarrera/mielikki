@@ -3,7 +3,7 @@ import type { Asset, FetchRecord, Page, Site } from "../model/types.js";
 import { pageKey, resolveHref } from "../model/url.js";
 import type { Fetcher } from "../net/fetch.js";
 import { isAssetPath } from "../net/policy.js";
-import { PageTooDeepError, parsePage } from "../parse/page.js";
+import { parsePageSafe, toUnparseable } from "../parse/safe.js";
 
 export const NOT_FOUND_PROBE = "/__mielikki_404__/";
 const MAX_SLASH_PROBES = 10;
@@ -105,7 +105,11 @@ export async function loadAssets(
   });
 }
 
-export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
+export async function runProbes(
+  site: Site,
+  fetcher: Fetcher,
+  parseTimeoutMs?: number,
+): Promise<void> {
   const origin = site.origin;
   const responses = site.responses;
   if (origin === undefined || responses === undefined) return;
@@ -153,10 +157,18 @@ export async function runProbes(site: Site, fetcher: Fetcher): Promise<void> {
   ) {
     let page: Page;
     try {
-      page = parsePage(f.body, pageKey(NOT_FOUND_PROBE));
+      page = await parsePageSafe(f.body, pageKey(NOT_FOUND_PROBE), undefined, {
+        timeoutMs: parseTimeoutMs,
+      });
     } catch (e) {
-      if (e instanceof PageTooDeepError) return; // judged without the parsed body
-      throw e;
+      const u = toUnparseable(e);
+      site.unparsed ??= [];
+      site.unparsed.push({
+        url: f.url,
+        reason: u.reason,
+        depth: u.depth,
+      });
+      return; // judged without the parsed body
     }
     page.status = f.status;
     page.headers = f.headers;

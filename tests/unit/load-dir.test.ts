@@ -25,7 +25,9 @@ describe("loadDir", () => {
       "deep/index.html": `<main>${"<div>".repeat(100_000)}</main>`,
     });
     expect(site.pages.map((p) => p.key)).toEqual(["/"]);
-    expect(site.unparsed).toEqual([{ url: "deep/index.html", depth: 100_001 }]);
+    expect(site.unparsed).toEqual([
+      { url: "deep/index.html", reason: "too-deep", depth: 1501 },
+    ]);
   });
 
   it("404 separated", async () => {

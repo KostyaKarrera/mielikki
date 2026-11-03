@@ -4,8 +4,9 @@ import type { Config } from "../config/schema.js";
 import { isIgnored } from "../model/indexable.js";
 import type { Asset, Page, Site } from "../model/types.js";
 import { pageKey } from "../model/url.js";
-import { PageTooDeepError, parsePage } from "../parse/page.js";
+import { parsePage } from "../parse/page.js";
 import { parseRobots } from "../parse/robots.js";
+import { toUnparseable } from "../parse/safe.js";
 import {
   buildSiteGraph,
   collectSitemaps,
@@ -61,7 +62,7 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
   const pages: Page[] = [];
   let notFound: Page | undefined;
   const assets = new Map<string, Asset>();
-  const unparsed: { url: string; depth: number }[] = [];
+  const unparsed: NonNullable<Site["unparsed"]> = [];
   for (const rel of files) {
     if (HTML.test(rel)) {
       const html = await readFile(path.join(root, rel), "utf8");
@@ -69,8 +70,9 @@ export async function loadDir(dir: string, config: Config): Promise<Site> {
       try {
         page = parsePage(html, pageKey(fileUrlPath(rel)), rel);
       } catch (e) {
-        if (!(e instanceof PageTooDeepError)) throw e;
-        unparsed.push({ url: rel, depth: e.depth });
+        // the user's own build: parsed in-process; any failure is a per-page problem
+        const u = toUnparseable(e);
+        unparsed.push({ url: rel, reason: u.reason, depth: u.depth });
         continue;
       }
       if (NOT_FOUND.test(rel)) notFound ??= page;

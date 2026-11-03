@@ -12,10 +12,8 @@ describe("maxOpenDepth", () => {
   });
   it("ignores void elements and optional end tags", () => {
     expect(maxOpenDepth("<div><br><img src=a><hr><input><meta></div>")).toBe(1);
-    expect(maxOpenDepth("<ul>" + "<li>x".repeat(5000) + "</ul>")).toBe(1);
-    expect(
-      maxOpenDepth("<table>" + "<tr><td>x".repeat(5000) + "</table>"),
-    ).toBe(1);
+    expect(maxOpenDepth(`<ul>${"<li>x".repeat(5000)}</ul>`)).toBe(1);
+    expect(maxOpenDepth(`<table>${"<tr><td>x".repeat(5000)}</table>`)).toBe(1);
     expect(maxOpenDepth("<p>a<p>b<p>c")).toBe(0);
   });
   it("skips comments and doctype", () => {
@@ -30,7 +28,7 @@ describe("maxOpenDepth", () => {
         "<div><script>var a='<div><div><div>';</script><style>div>div{}</style></div>",
       ),
     ).toBe(1);
-    expect(maxOpenDepth("<script>" + "<div>".repeat(100))).toBe(0);
+    expect(maxOpenDepth(`<script>${"<div>".repeat(100)}`)).toBe(0);
     expect(maxOpenDepth("<SCRIPT>x</SCRIPT><div>")).toBe(1);
   });
   it("handles '>' inside quoted attribute values", () => {
@@ -44,7 +42,7 @@ describe("maxOpenDepth", () => {
     expect(maxOpenDepth("<div></div></div></div><div><div>")).toBe(2);
   });
   it("self-closing counts only in svg/math", () => {
-    expect(maxOpenDepth("<svg>" + "<path/>".repeat(3000) + "</svg>")).toBe(1);
+    expect(maxOpenDepth(`<svg>${"<path/>".repeat(3000)}</svg>`)).toBe(1);
     expect(maxOpenDepth("<div/>".repeat(10))).toBe(10);
   });
   it("is case-insensitive and ignores stray '<'", () => {
@@ -65,7 +63,7 @@ describe("parsePage depth guard", () => {
     expect(performance.now() - t).toBeLessThan(500);
     expect(err).toBeInstanceOf(PageTooDeepError);
     expect((err as PageTooDeepError).message).toBe(
-      `page too deeply nested (100002 > ${MAX_NESTING})`,
+      `page too deeply nested (1501 > ${MAX_NESTING})`,
     );
   });
   it("parses at the cap", () => {

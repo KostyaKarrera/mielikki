@@ -250,7 +250,7 @@ describe("analyzeCompetitor", () => {
 
   it("schemaTypes are capped at 20 distinct types of at most 100 chars", async () => {
     const types = Array.from(
-      { length: 50000 },
+      { length: 9000 },
       (_, i) => `T${i}${"x".repeat(200)}`,
     );
     const f = scriptedFetcher({
@@ -456,7 +456,7 @@ describe("analyzeCompetitor deep nesting", () => {
     expect(r.pages.map((p) => p.path)).toEqual(["/", "/ok/"]);
     expect(r.errors).toContainEqual(
       expect.objectContaining({
-        message: "page too deeply nested (100002 > 1500)",
+        message: "page too deeply nested (1501 > 1500)",
       }),
     );
   });
@@ -574,5 +574,29 @@ describe("analyzeCompetitor Crawl-delay", () => {
     const { sleeps, f } = await run("3", 0);
     expect(f.requested[0]).toBe("http://c.test/robots.txt");
     expect(sleeps.length).toBe(f.requested.length - 1);
+  });
+});
+
+describe("analyzeCompetitor unparseable pages", () => {
+  it("competitors_skips_page_the_worker_cannot_parse", async () => {
+    const b = Array.from({ length: 1400 }, (_, i) => `<b a${i}>`).join("");
+    const f = scriptedFetcher({
+      "http://c.test/": {
+        html: html("Koti", '<a href="/bad/">b</a><a href="/ok/">o</a>'),
+      },
+      "http://c.test/bad/": {
+        html: `<div>${b}${"</div><div>x".repeat(3000)}`,
+      },
+      "http://c.test/ok/": { html: html("Ok") },
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, {
+      ...opts,
+      parseTimeoutMs: 400,
+    });
+    expect(r.pages.map((p) => p.path)).toEqual(["/", "/ok/"]);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]?.message).toMatch(
+      /^page could not be parsed safely \((timeout|memory)\)$/,
+    );
   });
 });

@@ -15,9 +15,10 @@ export const rule: SiteRule = {
   },
   checkSite(ctx) {
     for (const p of ctx.site.unparsed ?? [])
-      ctx.report({
-        url: p.url,
-        message: `${p.url} was not analyzed: page too deeply nested (${p.depth} > ${MAX_NESTING})`,
-      });
+      if (p.reason === "too-deep")
+        ctx.report({
+          url: p.url,
+          message: `${p.url} was not analyzed: page too deeply nested (${p.depth} > ${MAX_NESTING})`,
+        });
   },
 };

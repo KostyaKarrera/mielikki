@@ -112,6 +112,13 @@ export interface Asset {
   headers?: Record<string, string>; // URL mode, lowercase names
 }
 
+export type UnparseableReason =
+  | "timeout"
+  | "memory"
+  | "stack"
+  | "too-deep"
+  | "error";
+
 export interface Site {
   input: { kind: "dir" | "url"; root: string };
   config: Config;
@@ -129,6 +136,6 @@ export interface Site {
   responses?: Map<string, FetchRecord>; // URL mode
   /** URL mode: `skipped` lists every discovered URL that was not requested, sorted. */
   /** Pages refused before parsing (nested deeper than MAX_NESTING). */
-  unparsed?: { url: string; depth: number }[];
+  unparsed?: { url: string; reason: UnparseableReason; depth?: number }[];
   crawl?: { limitReached: boolean; skipped: string[] };
 }

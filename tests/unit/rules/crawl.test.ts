@@ -6,6 +6,7 @@ import { rule as noindex } from "../../../src/rules/crawl/noindex.js";
 import { rule as noindexExpectedMissing } from "../../../src/rules/crawl/noindex-expected-missing.js";
 import { rule as orphan } from "../../../src/rules/crawl/orphan.js";
 import { rule as pageTooDeep } from "../../../src/rules/crawl/page-too-deep.js";
+import { rule as pageUnparseable } from "../../../src/rules/crawl/page-unparseable.js";
 import { rule as robotsBlocksAll } from "../../../src/rules/crawl/robots-blocks-all.js";
 import { rule as robotsBlocksAssets } from "../../../src/rules/crawl/robots-blocks-assets.js";
 import { rule as robotsBlocksPage } from "../../../src/rules/crawl/robots-blocks-page.js";
@@ -45,7 +46,7 @@ describe("crawl rules registry", () => {
     const c = allRules
       .map((r) => r.meta.id)
       .filter((i) => i.startsWith("crawl/"));
-    expect(c).toHaveLength(18);
+    expect(c).toHaveLength(19);
     expect(c).toEqual([...c].sort());
   });
 });
@@ -649,10 +650,27 @@ describe("crawl/page-too-deep", () => {
     });
     const f = await runRule(pageTooDeep, site);
     expect(f.map((x) => x.url)).toEqual(["deep/index.html"]);
-    expect(f[0]?.message).toContain("page too deeply nested (5001 > 1500)");
+    expect(f[0]?.message).toContain("page too deeply nested (1501 > 1500)");
     expect(f[0]?.severity).toBe("error");
   });
   it("is silent on normal sites", async () => {
     expect(await ids(pageTooDeep, twoPages)).toEqual([]);
+  });
+});
+
+describe("crawl/page-unparseable", () => {
+  it("reports non-depth reasons only, and page-too-deep the depth ones", async () => {
+    const site = await siteFrom(twoPages);
+    site.unparsed = [
+      { url: "a.html", reason: "timeout" },
+      { url: "b.html", reason: "too-deep", depth: 2000 },
+    ];
+    const u = await runRule(pageUnparseable, site);
+    expect(u.map((f) => f.url)).toEqual(["a.html"]);
+    expect(u[0]?.message).toContain("(timeout)");
+    expect(u[0]?.severity).toBe("error");
+    expect((await runRule(pageTooDeep, site)).map((f) => f.url)).toEqual([
+      "b.html",
+    ]);
   });
 });
