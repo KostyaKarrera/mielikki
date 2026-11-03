@@ -31,6 +31,7 @@ export class GscQuotaError extends Error {
   }
 }
 
+const RETRY_DELAY_MS = 100;
 export const DEFAULT_INSPECT_BASE = "https://searchconsole.googleapis.com";
 export const DEFAULT_ANALYTICS_BASE = "https://www.googleapis.com";
 
@@ -42,7 +43,12 @@ export interface GscClient {
   ): Promise<InspectRow>;
   queryAnalytics(
     siteUrl: string,
-    q: { startDate: string; endDate: string; rowLimit: number },
+    q: {
+      startDate: string;
+      endDate: string;
+      rowLimit: number;
+      startRow?: number;
+    },
   ): Promise<QueryRow[]>;
 }
 
@@ -73,6 +79,8 @@ export function createGscClient(
   accessToken: string,
   http: HttpJson,
   base: { inspect?: string; analytics?: string } = {},
+  sleep: (ms: number) => Promise<void> = (ms) =>
+    new Promise((r) => setTimeout(r, ms)),
 ): GscClient {
   const inspectBase = (base.inspect ?? DEFAULT_INSPECT_BASE).replace(/\/$/, "");
   const analyticsBase = (base.analytics ?? DEFAULT_ANALYTICS_BASE).replace(
@@ -115,7 +123,10 @@ export function createGscClient(
         throw new UsageError(
           `Нет доступа к ресурсу ${redact(siteUrl, [accessToken])}: добавьте пользователя в Search Console или укажите --site sc-domain:…`,
         );
-      if (res.status >= 500 && attempt === 0) continue;
+      if (res.status >= 500 && attempt === 0) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
       throw new Error(
         res.status >= 500
           ? `Search Console временно недоступен (HTTP ${res.status})`
@@ -152,6 +163,7 @@ export function createGscClient(
           endDate: q.endDate,
           dimensions: ["query", "page"],
           rowLimit: q.rowLimit,
+          ...(q.startRow ? { startRow: q.startRow } : {}),
         },
         siteUrl,
       );

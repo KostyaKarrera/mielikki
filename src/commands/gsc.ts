@@ -185,6 +185,13 @@ const MIN_INTERVAL_MS = 100;
 /** Search Console data lags about two days. */
 const LAG_DAYS = 2;
 const MAX_SITEMAPS = 20;
+const MAX_REDIRECTS = 3;
+/** Rows per Search Analytics request (API maximum). */
+const PAGE_SIZE = 25_000;
+/** Overall cap of rows fetched by pagination. */
+export const MAX_ROW_LIMIT = 100_000;
+/** Consecutive 5xx/transport failures after which the inspect run stops. */
+const MAX_CONSECUTIVE_FAILURES = 5;
 
 const INSPECT_COLUMNS: (keyof InspectRow & string)[] = [
   "url",
@@ -215,6 +222,7 @@ interface TargetRow {
   clicks: number;
   bestPosition: number | null;
   topQueries: string;
+  otherPages: string;
 }
 const TARGET_COLUMNS: (keyof TargetRow & string)[] = [
   "target",
@@ -225,6 +233,7 @@ const TARGET_COLUMNS: (keyof TargetRow & string)[] = [
   "clicks",
   "bestPosition",
   "topQueries",
+  "otherPages",
 ];
 
 const clean = (s: string): string =>
@@ -278,6 +287,34 @@ async function writeOutput(
   }
 }
 
+/** GET following only same-origin redirects (scheme+host+port); the Fetcher never follows them itself. */
+async function getSameOrigin(
+  fetcher: Fetcher,
+  url: string,
+  site: URL,
+): Promise<{ status: number; body?: string } | undefined> {
+  let current = url;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const rec = await fetcher.get(current);
+    if (rec.final) {
+      return new URL(rec.final.url).origin === site.origin
+        ? { status: rec.final.status, body: rec.final.body }
+        : undefined;
+    }
+    const last = rec.hops[rec.hops.length - 1];
+    if (rec.stop !== "left-site" || !last?.location) return undefined;
+    let next: URL;
+    try {
+      next = new URL(last.location, last.url);
+    } catch {
+      return undefined;
+    }
+    if (next.origin !== site.origin) return undefined;
+    current = next.href;
+  }
+  return undefined;
+}
+
 async function collectSitemapUrls(
   site: URL,
   fetcher: Fetcher,
@@ -290,8 +327,8 @@ async function collectSitemapUrls(
     const loc = queue.shift() as string;
     if (seen.has(loc)) continue;
     seen.add(loc);
-    const rec = await fetcher.get(loc);
-    const body = rec.final?.status === 200 ? rec.final.body : undefined;
+    const rec = await getSameOrigin(fetcher, loc, site);
+    const body = rec?.status === 200 ? rec.body : undefined;
     const info = body === undefined ? undefined : parseSitemap(body, loc);
     if (!info?.ok) {
       if (first)
@@ -302,7 +339,7 @@ async function collectSitemapUrls(
     }
     first = false;
     for (const u of info.urls) {
-      if (!URL.canParse(u) || new URL(u).hostname !== site.hostname) continue;
+      if (!URL.canParse(u) || new URL(u).origin !== site.origin) continue;
       if (info.isIndex) queue.push(u);
       else urls.add(u);
     }
@@ -352,7 +389,7 @@ export async function runGscInspect(
         ...new Set(
           config.targets.pages
             .map((p) => new URL(p.url, site).href)
-            .filter((u) => new URL(u).hostname === site.hostname),
+            .filter((u) => new URL(u).origin === site.origin),
         ),
       ].sort();
     } else {
@@ -365,7 +402,8 @@ export async function runGscInspect(
           maxHops: 3,
           concurrency: 1,
           delayMs: 0,
-          allowRedirectHost: (h) => h === site.hostname,
+          // redirects are followed by getSameOrigin (origin incl. port)
+          allowRedirectHost: () => false,
         });
       urls = await collectSitemapUrls(site, fetcher);
     }
@@ -374,34 +412,46 @@ export async function runGscInspect(
     const total = urls.length;
     urls = urls.slice(0, o.limit);
 
-    const client = createGscClient(access.token, deps.http ?? defaultHttp(), {
-      inspect: deps.inspectBase,
-      analytics: deps.analyticsBase,
-    });
     const sleep =
       deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+    const client = createGscClient(
+      access.token,
+      deps.http ?? defaultHttp(),
+      { inspect: deps.inspectBase, analytics: deps.analyticsBase },
+      sleep,
+    );
     const language = config.language ?? "en";
     const rows: InspectRow[] = [];
     const errors: ResearchError[] = [];
-    let quota = false;
+    let quota: GscQuotaError | undefined;
+    let fatal: UsageError | undefined;
+    let aborted = false;
+    let streak = 0;
     for (const [i, u] of urls.entries()) {
       if (i > 0) await sleep(MIN_INTERVAL_MS);
       try {
         rows.push(await client.inspectUrl(siteUrl, u, language));
+        streak = 0;
       } catch (e) {
         if (e instanceof GscQuotaError) {
-          quota = true;
+          quota = new GscQuotaError(rows.length);
           break;
         }
-        if (e instanceof UsageError) throw e;
+        if (e instanceof UsageError) {
+          fatal = e;
+          break;
+        }
         errors.push({
           source: "gsc-inspect",
           target: clean(u),
-          message: redact(
-            clean(e instanceof Error ? e.message : "failed"),
-            secrets,
+          message: clean(
+            redact(e instanceof Error ? e.message : "failed", secrets),
           ),
         });
+        if (++streak >= MAX_CONSECUTIVE_FAILURES) {
+          aborted = true;
+          break;
+        }
       }
     }
     rows.sort((a, b) => (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
@@ -419,7 +469,9 @@ export async function runGscInspect(
       },
     );
     const text = redact(renderData(file, o.format, INSPECT_COLUMNS), secrets);
-    if (!(await writeOutput(text, o.output, io, warn))) return 2;
+    if (rows.length > 0 || errors.length > 0 || !fatal)
+      if (!(await writeOutput(text, o.output, io, warn))) return 2;
+    if (fatal) throw fatal;
 
     const byVerdict = new Map<string, number>();
     for (const r of rows)
@@ -429,7 +481,7 @@ export async function runGscInspect(
       .map(([v, n]) => `${clean(v)} ${n}`)
       .join(", ");
     warn(
-      `gsc inspect: проверено ${rows.length} из ${total}${counts ? ` (${counts})` : ""}`,
+      `gsc inspect: проверено ${rows.length} из ${urls.length}${counts ? ` (${counts})` : ""}`,
     );
     const notIndexed = rows.filter((r) => r.verdict !== "PASS");
     if (notIndexed.length > 0) {
@@ -437,9 +489,19 @@ export async function runGscInspect(
       for (const r of notIndexed.slice(0, 10))
         warn(`  ${r.verdict} ${clean(r.url)} (${clean(r.coverageState)})`);
     }
+    if (total > urls.length)
+      warn(
+        `Ещё ${total - urls.length} страниц не проверено из-за --limit ${o.limit}`,
+      );
     if (quota) {
       warn(
-        `mielikki: проверено ${rows.length} из ${urls.length}; квота обновляется раз в сутки`,
+        `mielikki: проверено ${quota.done} из ${urls.length}; квота обновляется раз в сутки`,
+      );
+      return 1;
+    }
+    if (aborted) {
+      warn(
+        `mielikki: прервано после ${MAX_CONSECUTIVE_FAILURES} ошибок подряд; проверено ${rows.length} из ${urls.length}`,
       );
       return 1;
     }
@@ -486,17 +548,28 @@ export async function runGscQueries(
     );
     const end = new Date(today - LAG_DAYS * day);
     const start = new Date(end.getTime() - (o.days - 1) * day);
-    const client = createGscClient(access.token, deps.http ?? defaultHttp(), {
-      inspect: deps.inspectBase,
-      analytics: deps.analyticsBase,
-    });
-    let rows: QueryRow[];
+    const client = createGscClient(
+      access.token,
+      deps.http ?? defaultHttp(),
+      { inspect: deps.inspectBase, analytics: deps.analyticsBase },
+      deps.sleep,
+    );
+    const rows: QueryRow[] = [];
     try {
-      rows = await client.queryAnalytics(siteUrl, {
-        startDate: isoDay(start),
-        endDate: isoDay(end),
-        rowLimit: o.rowLimit,
-      });
+      for (;;) {
+        const size = Math.min(PAGE_SIZE, o.rowLimit - rows.length);
+        const page = await client.queryAnalytics(siteUrl, {
+          startDate: isoDay(start),
+          endDate: isoDay(end),
+          rowLimit: size,
+          startRow: rows.length,
+        });
+        rows.push(...page);
+        if (page.length < size || rows.length >= o.rowLimit) break;
+        await (deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))))(
+          MIN_INTERVAL_MS,
+        );
+      }
     } catch (e) {
       if (e instanceof GscQuotaError) {
         warn("mielikki: квота Search Console исчерпана; повторите позже");
@@ -504,7 +577,7 @@ export async function runGscQueries(
       }
       if (e instanceof UsageError) throw e;
       warn(
-        `mielikki: ${redact(clean(e instanceof Error ? e.message : "запрос не удался"), secrets)}`,
+        `mielikki: ${clean(redact(e instanceof Error ? e.message : "запрос не удался", secrets))}`,
       );
       return 1;
     }
@@ -535,6 +608,7 @@ export async function runGscQueries(
           .slice(0, 5)
           .map((r) => r.query)
           .join("; "),
+        otherPages: c.otherPages.join("; "),
       }));
       text = renderData(
         fileOf("gsc-queries", targetRows, [], o.noMeta, now, {
@@ -558,6 +632,10 @@ export async function runGscQueries(
     }
     if (!(await writeOutput(redact(text, secrets), o.output, io, warn)))
       return 2;
+    if (rows.length >= o.rowLimit)
+      warn(
+        `данные усечены до ${o.rowLimit} строк; увеличьте --row-limit (максимум ${PAGE_SIZE} на запрос, пагинация до ${MAX_ROW_LIMIT})`,
+      );
     warn(
       `gsc queries: строк ${rows.length} (${params.startDate} — ${params.endDate})`,
     );

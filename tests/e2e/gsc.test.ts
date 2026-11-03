@@ -509,6 +509,167 @@ describe("gsc inspect and queries", () => {
     ).toEqual(["a", "b"]);
   });
 
+  it("queries paginates with startRow and warns when the limit truncates", async () => {
+    const mk = (a: number, n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        keys: [`q${a + i}`, "/"],
+        clicks: 0,
+        impressions: 1000 - (a + i),
+        ctr: 0,
+        position: 3,
+      }));
+    const { h, srv, deps, io } = await setup((_r, body) => ({
+      body: JSON.stringify({
+        rows: mk(Number(body.startRow ?? 0), Number(body.rowLimit)),
+      }),
+    }));
+    // page size is capped at 25000, so 30000 needs two requests
+    const code = await runGscQueries(
+      { ...queryOpts, rowLimit: 30000 },
+      io,
+      deps,
+    );
+    expect(code).toBe(0);
+    expect(
+      srv.gscLog.map((l) => [l.body.startRow ?? 0, l.body.rowLimit]),
+    ).toEqual([
+      [0, 25000],
+      [25000, 5000],
+    ]);
+    expect(JSON.parse(h.out()).rows).toHaveLength(30000);
+    expect(h.err()).toContain(
+      "данные усечены до 30000 строк; увеличьте --row-limit (максимум 25000 на запрос, пагинация до 100000)",
+    );
+  });
+
+  it("queries stops after a short page without a truncation warning", async () => {
+    const { h, srv, deps, io } = await setup(() => ({
+      body: JSON.stringify({
+        rows: [
+          { keys: ["a", "/"], clicks: 1, impressions: 1, ctr: 1, position: 1 },
+        ],
+      }),
+    }));
+    expect(await runGscQueries(queryOpts, io, deps)).toBe(0);
+    expect(srv.gscLog).toHaveLength(1);
+    expect(h.err()).not.toContain("усечены");
+  });
+
+  it("by-target names the competing URLs in otherPages", async () => {
+    const { h, deps, io } = await setup(
+      () => ({
+        body: JSON.stringify({
+          rows: [
+            {
+              keys: ["sähköasennus loviisa", "https://x.fi/b/"],
+              clicks: 1,
+              impressions: 9,
+              ctr: 0,
+              position: 4,
+            },
+            {
+              keys: ["loviisan sähköasennukset", "https://x.fi/a/"],
+              clicks: 1,
+              impressions: 8,
+              ctr: 0,
+              position: 5,
+            },
+          ],
+        }),
+      }),
+      "targets:\n  pages:\n    - url: /loviisa/\n      primary: sähköasennukset loviisa\n",
+    );
+    expect(
+      await runGscQueries({ ...queryOpts, byTarget: true }, io, deps),
+    ).toBe(0);
+    const row = JSON.parse(h.out()).rows[0];
+    expect(row.status).toBe("other-page");
+    expect(row.otherPages).toBe("https://x.fi/a/; https://x.fi/b/");
+  });
+
+  it("inspect: denominators agree and --limit leftovers are mentioned", async () => {
+    const { h, deps, io } = await setup((_r, _b, ctx) =>
+      ctx.n === 2 ? { status: 429, body: "{}" } : { body: indexed("PASS") },
+    );
+    expect(await runGscInspect({ ...inspectOpts, limit: 3 }, io, deps)).toBe(1);
+    expect(h.err()).toContain("проверено 1 из 3");
+    expect(h.err()).not.toContain("из 4");
+    expect(h.err()).toContain("Ещё 1 страниц не проверено из-за --limit 3");
+    expect(h.err()).toContain(
+      "проверено 1 из 3; квота обновляется раз в сутки",
+    );
+  });
+
+  it("inspect: 5xx is retried after a pause; 5 consecutive failures abort with a partial file", async () => {
+    const sleeps: number[] = [];
+    const { h, srv, deps, io } = await setup((_r, _b, ctx) =>
+      ctx.n === 1 ? { body: indexed("PASS") } : { status: 503, body: "x" },
+    );
+    writeFileSync(
+      path.join(h.tmp, "sitemap.xml"),
+      `<urlset>${Array.from({ length: 12 }, (_, i) => `<url><loc>${srv.url}/p${String(i).padStart(2, "0")}/</loc></url>`).join("")}</urlset>`,
+    );
+    const code = await runGscInspect({ ...inspectOpts, output: "f.json" }, io, {
+      ...deps,
+      sleep: async (ms) => void sleeps.push(ms),
+    });
+    expect(code).toBe(1);
+    const file = JSON.parse(readFileSync(path.join(h.tmp, "f.json"), "utf8"));
+    expect(file.rows).toHaveLength(1);
+    expect(file.errors).toHaveLength(5);
+    expect(h.err()).toContain("прервано после 5 ошибок подряд");
+    // each failing URL: 2 attempts (one retry) -> 1 + 5*2 calls, far fewer than 12 URLs
+    expect(srv.gscLog).toHaveLength(11);
+    expect(sleeps.filter((m) => m >= 100).length).toBeGreaterThanOrEqual(5);
+  });
+
+  it("inspect: a mid-run 403 writes the partial file first, then exits 2", async () => {
+    const { h, deps, io } = await setup((_r, _b, ctx) =>
+      ctx.n === 3 ? { status: 403, body: "{}" } : { body: indexed("PASS") },
+    );
+    const code = await runGscInspect(
+      { ...inspectOpts, output: "m.json" },
+      io,
+      deps,
+    );
+    expect(code).toBe(2);
+    const file = JSON.parse(readFileSync(path.join(h.tmp, "m.json"), "utf8"));
+    expect(file.rows).toHaveLength(2);
+    expect(h.err()).toContain("Нет доступа к ресурсу");
+  });
+
+  it("inspect: sitemap children on another port are not requested", async () => {
+    const other = await serveDir(tmp ?? ".", {
+      extra: { "/sm.xml": { type: "application/xml", body: "<urlset/>" } },
+    });
+    try {
+      const { h, srv, deps, io } = await setup(() => ({
+        body: indexed("PASS"),
+      }));
+      writeFileSync(
+        path.join(h.tmp, "sitemap.xml"),
+        `<sitemapindex><sitemap><loc>${other.url}/sm.xml</loc></sitemap><sitemap><loc>${srv.url}/sm-a.xml</loc></sitemap></sitemapindex>`,
+      );
+      writeFileSync(
+        path.join(h.tmp, "sm-a.xml"),
+        `<urlset><url><loc>${srv.url}/only/</loc></url><url><loc>${other.url}/foreign/</loc></url></urlset>`,
+      );
+      expect(
+        await runGscInspect({ ...inspectOpts, output: "o.json" }, io, deps),
+      ).toBe(0);
+      const file = JSON.parse(readFileSync(path.join(h.tmp, "o.json"), "utf8"));
+      expect(file.rows.map((r: { url: string }) => r.url)).toEqual([
+        `${srv.url}/only/`,
+      ]);
+      expect(other.requests).toEqual([]);
+      expect(srv.gscLog.map((l) => l.body.inspectionUrl)).toEqual([
+        `${srv.url}/only/`,
+      ]);
+    } finally {
+      await other.close();
+    }
+  });
+
   it("CLI wires gsc inspect and queries (exit 2 without config site/token)", () => {
     tmp = mkdtempSync(path.join(os.tmpdir(), "mielikki-gsc-cli-"));
     const r = spawnSync("node", [CLI, "gsc", "queries"], {

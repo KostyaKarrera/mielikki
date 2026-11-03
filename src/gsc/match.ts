@@ -10,6 +10,8 @@ export interface TargetCoverage {
   impressions: number;
   clicks: number;
   bestPosition: number | null;
+  /** Distinct pages (not the target) that received matched queries, sorted, top 3. */
+  otherPages: string[];
   status: "no-data" | "ranking" | "other-page";
 }
 
@@ -87,6 +89,13 @@ export function matchQueriesToTargets(
       bestPosition: matched.length
         ? Math.min(...matched.map((r) => r.position))
         : null,
+      otherPages: [
+        ...new Set(
+          matched.filter((r) => !samePage(r.page, page.url)).map((r) => r.page),
+        ),
+      ]
+        .sort()
+        .slice(0, 3),
       status:
         matched.length === 0
           ? "no-data"

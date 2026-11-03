@@ -464,7 +464,12 @@ export function buildProgram(): Command {
       int(true, 480),
       28,
     )
-    .option("--row-limit <n>", "rows to fetch", int(true, 25000), 1000)
+    .option(
+      "--row-limit <n>",
+      "rows to fetch (paginated by 25000, at most 100000)",
+      int(true, 100000),
+      1000,
+    )
     .option("--by-target", "coverage of targets.pages by queries")
     .addOption(dataFormat())
     .option("--output <file>", "write the data to a file")

@@ -194,6 +194,29 @@ describe("api_error_messages", () => {
     ).toBe("UNKNOWN");
   });
 
+  it("waits before the single 5xx retry and sends startRow only when set", async () => {
+    const waits: number[] = [];
+    const r = fake([{ status: 502, text: "" }, ok({ rows: [] })]);
+    const c = createGscClient(TOKEN, r.http, {}, async (ms) => {
+      waits.push(ms);
+    });
+    await c.queryAnalytics("s", {
+      startDate: "a",
+      endDate: "b",
+      rowLimit: 5,
+      startRow: 5,
+    });
+    expect(waits).toEqual([100]);
+    expect(r.calls[1]?.body).toMatchObject({ startRow: 5 });
+    const r2 = fake([ok({ rows: [] })]);
+    await createGscClient(TOKEN, r2.http).queryAnalytics("s", {
+      startDate: "a",
+      endDate: "b",
+      rowLimit: 5,
+    });
+    expect(r2.calls[0]?.body).not.toHaveProperty("startRow");
+  });
+
   it("transport errors never carry the token", async () => {
     const http: HttpJson = {
       getText: async () => {
