@@ -23,7 +23,7 @@ const real = (o: { timeoutMs?: number; maxBytes?: number } = {}) =>
     maxHops: 5,
     concurrency: 1,
     delayMs: 0,
-    allowRedirectHost: (h) => h === "127.0.0.1",
+    allowRedirectHost: () => false,
   });
 const opts = { maxPages: 30, language: "fi" as const, areaHints: [] };
 const html = (title: string, body = ""): string =>
@@ -208,7 +208,7 @@ describe("analyzeCompetitor", () => {
     const r = await analyzeCompetitor(server.url, real(), opts);
     expect(r.pages.map((p) => p.path)).toEqual(["/"]);
     expect(r.errors.map((e) => e.message)).toContain(
-      "redirected to a path disallowed by robots.txt",
+      "redirect into a path disallowed by robots.txt",
     );
     expect(r.terms.map((t) => t.term)).not.toContain("salainen");
   });
@@ -335,5 +335,108 @@ describe("analyzeCompetitor", () => {
       "/fi/alueet/x/": "area",
       "/muu/": "other",
     });
+  });
+
+  const rob = (body: string) => ({ type: "text/plain", body });
+
+  it("redirect to the same hostname on another port is never requested", async () => {
+    const other = await serveDir(FX);
+    try {
+      server = await serveDir(FX, {
+        redirects: {
+          "/go": { status: 302, location: `${other.url}/palvelut/` },
+        },
+        dynamic: (p) =>
+          p === "/"
+            ? { body: html("Koti", '<a href="/go">g</a>') }
+            : p === "/sitemap.xml"
+              ? { status: 404, body: "" }
+              : undefined,
+      });
+      const r = await analyzeCompetitor(server.url, real(), opts);
+      expect(other.requests).toEqual([]);
+      expect(r.errors.some((e) => e.target.endsWith("/go"))).toBe(true);
+      expect(r.pages.map((p) => p.path)).toEqual(["/"]);
+    } finally {
+      await other.close();
+    }
+  });
+
+  it("scheme change is not followed", async () => {
+    const f = scriptedFetcher({
+      "http://c.test/": { html: html("Koti", '<a href="/s/">s</a>') },
+      "http://c.test/s/": {
+        final: {
+          url: "http://c.test/s/",
+          status: 301,
+          headers: { location: "https://c.test/s/" },
+          bytes: 0,
+        },
+      },
+    });
+    const r = await analyzeCompetitor("http://c.test/", f, opts);
+    expect(f.requested).not.toContain("https://c.test/s/");
+    expect(
+      r.errors.some((e) => e.message.startsWith("redirect to https://")),
+    ).toBe(true);
+  });
+
+  it("intermediate hops are robots-checked before they are requested", async () => {
+    server = await serveDir(FX, {
+      redirects: {
+        "/go": { status: 302, location: "/private/x" },
+        "/private/x": { status: 302, location: "/ok/" },
+      },
+      dynamic: (p) =>
+        p === "/"
+          ? { body: html("Koti", '<a href="/go">g</a>') }
+          : p === "/robots.txt"
+            ? rob("User-agent: *\nDisallow: /private/\n")
+            : p === "/sitemap.xml"
+              ? { status: 404, body: "" }
+              : p === "/ok/"
+                ? { body: html("Ok") }
+                : undefined,
+    });
+    const r = await analyzeCompetitor(server.url, real(), opts);
+    expect(server.requests).not.toContain("/private/x");
+    expect(r.errors[0]?.message).toBe(
+      "redirect into a path disallowed by robots.txt",
+    );
+  });
+
+  it("same-origin redirect (/x -> /x/) is followed", async () => {
+    server = await serveDir(FX, {
+      redirects: { "/x": { status: 301, location: "/x/" } },
+      dynamic: (p) =>
+        p === "/"
+          ? { body: html("Koti", '<a href="/x">x</a>') }
+          : p === "/x/"
+            ? { body: html("X") }
+            : p === "/sitemap.xml"
+              ? { status: 404, body: "" }
+              : undefined,
+    });
+    const r = await analyzeCompetitor(server.url, real(), opts);
+    expect(r.pages.map((p) => p.path)).toEqual(["/", "/x/"]);
+    expect(r.errors).toEqual([]);
+  });
+
+  it("robots.txt redirecting to another port is unavailable", async () => {
+    const other = await serveDir(FX);
+    try {
+      server = await serveDir(FX, {
+        redirects: {
+          "/robots.txt": { status: 301, location: `${other.url}/robots.txt` },
+        },
+      });
+      const r = await analyzeCompetitor(server.url, real(), opts);
+      expect(other.requests).toEqual([]);
+      expect(r.pagesAnalyzed).toBe(0);
+      expect(r.errors[0]?.message).toContain("redirects to 127.0.0.1:");
+      expect(server.requests).toEqual(["/robots.txt"]);
+    } finally {
+      await other.close();
+    }
   });
 });

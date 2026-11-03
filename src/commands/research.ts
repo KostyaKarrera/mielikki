@@ -362,8 +362,8 @@ export async function runResearchCompetitors(
   const areaHints = config.business?.areaServed ?? [];
 
   warn("research competitors: вежливый обход, robots.txt соблюдается");
-  // One fetcher per site: redirects are followed only within that site's host.
-  const fetcherFor = (startUrl: string): Fetcher =>
+  // The Fetcher never follows redirects here; analyzeCompetitor does, hop by hop.
+  const fetcher: Fetcher =
     deps.fetcher ??
     createFetcher({
       userAgent: `Mielikki/${VERSION} (+https://github.com/KostyaKarrera/mielikki)`,
@@ -372,7 +372,8 @@ export async function runResearchCompetitors(
       maxHops: 5,
       concurrency: 1,
       delayMs: opts.delay,
-      allowRedirectHost: (h) => h === new URL(startUrl).hostname,
+      // Redirects are followed by analyzeCompetitor, hop by hop.
+      allowRedirectHost: () => false,
     });
 
   const rows: CompetitorReport[] = [];
@@ -386,7 +387,7 @@ export async function runResearchCompetitors(
     seenSites.add(origin);
     try {
       rows.push(
-        await analyzeCompetitor(u, fetcherFor(u), {
+        await analyzeCompetitor(u, fetcher, {
           maxPages: opts.maxPages,
           language,
           areaHints,

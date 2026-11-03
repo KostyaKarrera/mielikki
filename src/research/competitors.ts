@@ -44,6 +44,7 @@ const SOURCE = "competitors";
 const MAX_SITEMAP_SEEDS = 200;
 const MAX_SITEMAP_FILES = 5;
 const MAX_HEADINGS = 20;
+const MAX_HOPS = 5;
 const MAX_SCHEMA_TYPES = 20;
 const HTML_TYPES = new Set(["text/html", "application/xhtml+xml"]);
 const SERVICE_SEGMENT = /^(palvelu\w*|tjanster|services)$/;
@@ -221,17 +222,71 @@ export async function analyzeCompetitor(
     };
   };
 
-  // Every request goes through here: never to another origin.
-  const get = (url: string): Promise<FetchRecord> => {
+  let robots: RobotsInfo | undefined;
+  const allowed = (u: URL): boolean =>
+    robots === undefined || robots.isAllowed(u.pathname + u.search, "Mielikki");
+
+  const stopped = (
+    url: string,
+    hops: FetchRecord["hops"],
+    stop: NonNullable<FetchRecord["stop"]>,
+    detail: string,
+  ): FetchRecord => ({ requested: url, hops, stop, detail });
+
+  // Every request goes through here: never to another origin. Redirects are
+  // followed here, not by the Fetcher, so each hop is checked (full origin and
+  // robots.txt) before it is requested.
+  const get = async (url: string): Promise<FetchRecord> => {
     if (new URL(url).origin !== origin)
       throw new Error(`refusing to request off-host URL ${url}`);
-    return fetcher.get(url);
+    const hops: FetchRecord["hops"] = [];
+    const visited = new Set<string>();
+    let current = url;
+    for (;;) {
+      visited.add(current);
+      const rec = await fetcher.get(current, { follow: false });
+      const f = rec.final;
+      const location = f?.headers.location;
+      if (
+        rec.stop !== undefined ||
+        f === undefined ||
+        f.status < 300 ||
+        f.status >= 400 ||
+        !location
+      )
+        return { ...rec, requested: url, hops };
+      let next: URL;
+      try {
+        next = new URL(location, current);
+      } catch {
+        return stopped(url, hops, "network", "invalid redirect location");
+      }
+      hops.push({ url: current, status: f.status, location });
+      if (next.origin !== origin)
+        return stopped(url, hops, "left-site", `redirect to ${next.href}`);
+      if (!allowed(next))
+        return stopped(
+          url,
+          hops,
+          "left-site",
+          "redirect into a path disallowed by robots.txt",
+        );
+      if (visited.has(next.href))
+        return stopped(url, hops, "redirect-loop", "redirect loop");
+      if (hops.length > MAX_HOPS)
+        return stopped(
+          url,
+          hops,
+          "too-many-redirects",
+          `more than ${MAX_HOPS} redirects`,
+        );
+      current = next.href;
+    }
   };
 
   // robots.txt is always obeyed; there is no switch to turn it off.
   const robotsUrl = `${origin}/robots.txt`;
   const robotsRec = await get(robotsUrl);
-  let robots: RobotsInfo | undefined;
   if (robotsRec.final?.status === 200) {
     robots = parseRobots(robotsRec.final.body ?? "", origin);
   } else if (
@@ -254,8 +309,6 @@ export async function analyzeCompetitor(
     );
     return report([], [], 0, "done");
   }
-  const allowed = (u: URL): boolean =>
-    robots === undefined || robots.isAllowed(u.pathname + u.search, "Mielikki");
   if (!allowed(start)) {
     addError(start.href, "blocked by robots.txt");
     return report([], [], 0, "done");
@@ -356,7 +409,7 @@ export async function analyzeCompetitor(
       if (finalNorm !== url) {
         // Same-host redirect: robots.txt applies to where we ended up.
         if (!allowed(finalUrl)) {
-          addError(url, "redirected to a path disallowed by robots.txt");
+          addError(url, "redirect into a path disallowed by robots.txt");
           continue;
         }
         if (seen.has(finalNorm)) continue;
