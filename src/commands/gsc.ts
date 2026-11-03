@@ -489,11 +489,11 @@ export async function runGscInspect(
     }
     if (total > urls.length)
       warn(
-        `${total - urls.length} more pages not inspected because of --limit ${o.limit}`,
+        `${total - urls.length} more ${total - urls.length === 1 ? "page" : "pages"} not inspected because of --limit ${o.limit}`,
       );
     if (quota) {
       warn(
-        `mielikki: inspected ${quota.done} of ${urls.length}; the quota resets daily`,
+        `mielikki: inspected ${quota.done} of ${urls.length}; Search Console quota exhausted (limits are per day), try again later`,
       );
       return 1;
     }

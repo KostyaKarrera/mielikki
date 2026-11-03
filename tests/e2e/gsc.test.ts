@@ -409,7 +409,9 @@ describe("gsc inspect and queries", () => {
     expect(code).toBe(1);
     const file = JSON.parse(readFileSync(path.join(h.tmp, "p.json"), "utf8"));
     expect(file.rows).toHaveLength(2);
-    expect(h.err()).toContain("inspected 2 of 4; the quota resets daily");
+    expect(h.err()).toContain(
+      "inspected 2 of 4; Search Console quota exhausted (limits are per day), try again later",
+    );
     noLeak(h.out() + h.err());
   });
 
@@ -592,10 +594,10 @@ describe("gsc inspect and queries", () => {
     expect(await runGscInspect({ ...inspectOpts, limit: 3 }, io, deps)).toBe(1);
     expect(h.err()).toContain("inspected 1 of 3");
     expect(h.err()).not.toContain("of 4");
+    expect(h.err()).toContain("1 more page not inspected because of --limit 3");
     expect(h.err()).toContain(
-      "1 more pages not inspected because of --limit 3",
+      "inspected 1 of 3; Search Console quota exhausted (limits are per day), try again later",
     );
-    expect(h.err()).toContain("inspected 1 of 3; the quota resets daily");
   });
 
   it("inspect: 5xx is retried after a pause; 5 consecutive failures abort with a partial file", async () => {
